@@ -1,9 +1,9 @@
 
 AC_INIT
-AC_CONFIG_SRCDIR([src/mod_xmltransform.c])
+AC_CONFIG_SRCDIR([src/mod_transform.c])
 AM_MAINTAINER_MODE
-AM_INIT_AUTOMAKE(mod_xmltransform, 0.1.0)
-AM_CONFIG_HEADER([include/mod_xmltransform_config.h:config.in])
+AM_INIT_AUTOMAKE(mod_transform, 0.1.0)
+AM_CONFIG_HEADER([include/mod_transform_config.h:config.in])
 
 AC_PROG_CC
 AC_PROG_LD
@@ -102,7 +102,7 @@ AC_CONFIG_FILES([Makefile src/Makefile])
 AC_OUTPUT
 
 echo "---"
-echo "Configuration summary for mod_xmltransform"
+echo "Configuration summary for mod_transform"
 echo ""
 echo "   * Apache modules directory = $LIBEXECDIR"
 echo ""

@@ -23,12 +23,12 @@
 
 #define XSLT_FILTER_NAME "XSLT"
 
-#include "mod_xmltransform.h"
+#include "mod_transform.h"
 
 #include "apr_buckets.h"
 #include "apr_strings.h"
 
-module AP_MODULE_DECLARE_DATA xmltransform_module;
+module AP_MODULE_DECLARE_DATA transform_module;
 
 /* BEGIN svr cfg / stylesheet cache section */
 typedef struct cached_xslt
@@ -56,12 +56,12 @@ static void *get_cached_xslt(svr_cfg * sconf, const char *descriptor)
     return 0;                   //apr_hash_get(sconf->hash, descriptor, APR_HASH_KEY_STRING) ;
 }
 
-static const char *xmltransform_cache_xslt(cmd_parms * cmd, void *cfg,
+static const char *transform_cache_xslt(cmd_parms * cmd, void *cfg,
                                     const char *url, const char *path)
 {
     svr_cfg *conf =
         ap_get_module_config(cmd->server->module_config,
-                             &xmltransform_module);
+                             &transform_module);
     xsltStylesheetPtr xslt = xsltParseStylesheetFile(path);
     if (url && path && xslt) {
         cached_xslt *me = apr_palloc(cmd->pool, sizeof(cached_xslt));
@@ -138,36 +138,36 @@ typedef struct
 {
     ap_filter_t *next;
     apr_bucket_brigade *bb;
-} xmltransform_output_ctx;
+} transform_output_ctx;
 
 static int writeCallback(void *context, const char *buffer, int len)
 {
     if (len > 0) {
-        xmltransform_output_ctx *octx = (xmltransform_output_ctx *) context;
+        transform_output_ctx *octx = (transform_output_ctx *) context;
         ap_fwrite(octx->next, octx->bb, buffer, len);
     }
     return len;
 }
 static int closeCallback(void *context)
 {
-    xmltransform_output_ctx *octx = (xmltransform_output_ctx *) context;
+    transform_output_ctx *octx = (transform_output_ctx *) context;
     apr_bucket *b = apr_bucket_eos_create(octx->bb->bucket_alloc);
     APR_BRIGADE_INSERT_TAIL(octx->bb, b);
     return 0;
 }
-static apr_status_t xmltransform_run(ap_filter_t * f, xmlDocPtr doc)
+static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
 {
     size_t length;
-    xmltransform_output_ctx output_ctx;
+    transform_output_ctx output_ctx;
     int stylesheet_is_cached = 0;
     xsltStylesheetPtr transform = 0;
     xmlDocPtr result = 0;
     xmlOutputBufferPtr output;
 
     modxml_notes *notes =
-        ap_get_module_config(f->r->request_config, &xmltransform_module);
+        ap_get_module_config(f->r->request_config, &transform_module);
     svr_cfg *sconf = ap_get_module_config(f->r->server->module_config,
-                                          &xmltransform_module);
+                                          &transform_module);
 
     if (!doc)
         return pass_failure(f, "XSLT: Couldn't parse document", notes);
@@ -207,7 +207,7 @@ static apr_status_t xmltransform_run(ap_filter_t * f, xmlDocPtr doc)
     return APR_SUCCESS;
 }
 
-static apr_status_t xmltransform_filter(ap_filter_t * f,
+static apr_status_t transform_filter(ap_filter_t * f,
                                       apr_bucket_brigade * bb)
 {
     apr_bucket *b;
@@ -224,14 +224,14 @@ static apr_status_t xmltransform_filter(ap_filter_t * f,
         if (APR_BUCKET_IS_EOS(b)) {
             if (ctxt) {         /* got input the normal way */
                 xmlParseChunk(ctxt, buf, 0, 1);
-                ret = xmltransform_run(f, ctxt->myDoc);
+                ret = transform_run(f, ctxt->myDoc);
                 xmlFreeParserCtxt(ctxt);
             }
             else {              /* someone passed us an in-memory doctree */
                 modxml_notes *notes =
                     ap_get_module_config(f->r->request_config,
-                                         &xmltransform_module);
-                ret = xmltransform_run(f, notes->document);
+                                         &transform_module);
+                ret = transform_run(f, notes->document);
                 if (notes->document)
                     xmlFreeDoc(notes->document);
             }
@@ -281,54 +281,54 @@ static const char *use_xslt(cmd_parms * cmd, void *cfg, const char *xslt)
 static int init_notes(request_rec * r)
 {
     dir_cfg *conf = ap_get_module_config(r->per_dir_config,
-                                         &xmltransform_module);
+                                         &transform_module);
     modxml_notes *notes = apr_palloc(r->pool, sizeof(modxml_notes));
     notes->xslt = conf->xslt;
     notes->document = 0;
-    ap_set_module_config(r->request_config, &xmltransform_module, notes);
+    ap_set_module_config(r->request_config, &transform_module, notes);
     return 0;
 }
 
-static const command_rec xmltransform_cmds[] = {
+static const command_rec transform_cmds[] = {
 
-    AP_INIT_TAKE1("XMLTransformSet", use_xslt, NULL, OR_ALL,
+    AP_INIT_TAKE1("TransformSet", use_xslt, NULL, OR_ALL,
                   "Stylesheet to use"),
 
-    AP_INIT_TAKE2("XMLTransformCache", xmltransform_cache_xslt, NULL, RSRC_CONF,
+    AP_INIT_TAKE2("TransformCache", transform_cache_xslt, NULL, RSRC_CONF,
                   "URL and Path for stylesheet to preload"),
     {NULL}
 };
 
-static void xmltransform_hooks(apr_pool_t * p)
+static void transform_hooks(apr_pool_t * p)
 {
     ap_hook_post_read_request(init_notes, NULL, NULL, APR_HOOK_MIDDLE);
 
-    ap_register_output_filter(XSLT_FILTER_NAME, xmltransform_filter, NULL,
+    ap_register_output_filter(XSLT_FILTER_NAME, transform_filter, NULL,
                               AP_FTYPE_RESOURCE);
 
 };
 
-module AP_MODULE_DECLARE_DATA xmltransform_module = {
+module AP_MODULE_DECLARE_DATA transform_module = {
     STANDARD20_MODULE_STUFF,
     xml_create_dir_config,
     xml_merge_dir_config,
     create_server_cfg,
     NULL,
-    xmltransform_cmds,
-    xmltransform_hooks
+    transform_cmds,
+    transform_hooks
 };
 
 /* Exported Functions */
-void mod_xmltransform_set_XSLT(request_rec * r, const char *name)
+void mod_transform_set_XSLT(request_rec * r, const char *name)
 {
     modxml_notes *notes = ap_get_module_config(r->request_config,
-                                               &xmltransform_module);
+                                               &transform_module);
     notes->xslt = apr_pstrdup(r->pool, name);
 }
 
-void mod_xmltransform_XSLTDoc(request_rec * r, xmlDocPtr doc)
+void mod_transform_XSLTDoc(request_rec * r, xmlDocPtr doc)
 {
     modxml_notes *notes = ap_get_module_config(r->request_config,
-                                               &xmltransform_module);
+                                               &transform_module);
     notes->document = doc;
 }

@@ -1,16 +1,16 @@
-CLEANFILES = .libs/libmod_xmltransform *~
+CLEANFILES = .libs/libmod_transform *~
 
-libmod_xmltransform_la_SOURCES = mod_xmltransform.c
-libmod_xmltransform_la_CFLAGS = -Wall ${XSLT_CFLAGS}
-libmod_xmltransform_la_LDFLAGS = ${XSLT_LIBS}
+libmod_transform_la_SOURCES = mod_transform.c
+libmod_transform_la_CFLAGS = -Wall ${XSLT_CFLAGS}
+libmod_transform_la_LDFLAGS = ${XSLT_LIBS}
 
-lib_LTLIBRARIES = libmod_xmltransform.la 
+lib_LTLIBRARIES = libmod_transform.la 
 
 make_so:
-	@if test ! -L mod_xmltransform.so ; then ln -s .libs/libmod_xmltransform.so mod_xmltransform.so ; fi
+	@if test ! -L mod_transform.so ; then ln -s .libs/libmod_transform.so mod_transform.so ; fi
 
 install: make_so
-	@${APXS} -i -n xmltransform mod_xmltransform.so
+	@${APXS} -i -n transform mod_transform.so
 	@echo ""
 	@echo ""
 	@echo "***********************************************"
@@ -23,7 +23,7 @@ install: make_so
 	@echo ""
 
 activate: make_so
-	@${APXS} -i -a -n xmltransform mod_xmltransform.so
+	@${APXS} -i -a -n transform mod_transform.so
 	@echo ""
 	@echo ""
 	@echo "***********************************************"

@@ -1,5 +1,5 @@
-#ifndef _MOD_XMLTRANSFORM_H
-#define _MOD_XMLTRANSFORM_H
+#ifndef _MOD_TRANSFORM_H
+#define _MOD_TRANSFORM_H
  
 #include "httpd.h"
 #include "http_config.h"
@@ -16,8 +16,8 @@
 extern "C" {
 #endif
  
-void mod_xmltransform_set_XSLT(request_rec* r, const char* name) ;
-void mod_xmltransform_XSLTDoc(request_rec* r, xmlDocPtr doc) ;
+void mod_transform_set_XSLT(request_rec* r, const char* name) ;
+void mod_transform_XSLTDoc(request_rec* r, xmlDocPtr doc) ;
 
 #ifdef __cplusplus
 }
