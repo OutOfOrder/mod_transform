@@ -33,7 +33,7 @@
 #include "apr_uri.h"
 
 // Toggle for a few things to aid in debuging.
-// #define _TRANSFORM_DEBUG 1
+#define _TRANSFORM_DEBUG
 
 module AP_MODULE_DECLARE_DATA transform_module;
 
@@ -174,6 +174,7 @@ static xmlNodePtr find_stylesheet_node(xmlDocPtr doc) {
                 return child;
             }
         }
+        child = child->next;
     }
     return NULL;
 }
@@ -413,7 +414,6 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     xsltStylesheetPtr transform = NULL;
     xmlDocPtr result = NULL;
     xmlOutputBufferPtr output;
-
     modxml_notes *notes =
         ap_get_module_config(f->r->request_config, &transform_module);
     svr_cfg *sconf = ap_get_module_config(f->r->server->module_config,
@@ -507,9 +507,9 @@ static apr_status_t transform_filter(ap_filter_t * f,
                 return ap_pass_brigade(f->next, bb);
             }
         }
-        #ifdef _TRANSFORM_DEBUG
-        apr_table_unset(f->r->headers_out, "Last-Modified");
-        #endif
+        // TODO: Find a better way to determine if any resources needed to 
+        //      create this document have changed.
+        //apr_table_unset(f->r->headers_out, "Last-Modified");
     }
 
     if ((f->r->proto_num >= 1001) && !f->r->main && !f->r->prev)
@@ -534,10 +534,14 @@ static apr_status_t transform_filter(ap_filter_t * f,
         }
         else if (apr_bucket_read(b, &buf, &bytes, APR_BLOCK_READ)
                  == APR_SUCCESS) {
-            if (ctxt)
+            if (ctxt) {
                 xmlParseChunk(ctxt, buf, bytes, 0);
-            else if (bytes >= 4)
+            }
+            else if (bytes >= 4) {
                 f->ctx = ctxt = xmlCreatePushParserCtxt(0, 0, buf, bytes, 0);
+                xmlCtxtUseOptions(ctxt, XML_PARSE_NOENT | XML_PARSE_NOCDATA);
+                ctxt->directory = xmlParserGetDirectory(f->r->filename);
+            }
         }
     }
     apr_brigade_destroy(bb);
