@@ -79,6 +79,11 @@ AC_MSG_RESULT($LIBEXECDIR)
 AC_MSG_CHECKING([for Apache include directory])
 AP_INCLUDES="-I`${APXS} -q INCLUDEDIR`"
 AC_MSG_RESULT($AP_INCLUDES)
+
+AM_PATH_XSLT(1.1.0,
+    "",
+    AC_MSG_ERROR([could not find libxslt]) )
+
 CFLAGS="${CFLAGS} $AP_INCLUDES"
 
 AC_PATH_PROG(PKG_CONFIG, pkg-config, no)
@@ -100,7 +105,5 @@ echo "---"
 echo "Configuration summary for mod_xmltransform"
 echo ""
 echo "   * Apache modules directory = $LIBEXECDIR"
-echo "   * libxslt CFLAGS = $XSLT_INCLUDES"
-echo "   * libxslt LDFLAGS = $XSLT_LIBS"
 echo ""
 echo "---"
