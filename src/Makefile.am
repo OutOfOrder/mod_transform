@@ -1,7 +1,7 @@
 CLEANFILES = .libs/libmod_transform *~
 
 libmod_transform_la_SOURCES = mod_transform.c
-libmod_transform_la_CFLAGS = -Wall ${XSLT_CFLAGS}
+libmod_transform_la_CFLAGS = -Wall ${XSLT_CFLAGS} ${MODULE_CFLAGS}
 libmod_transform_la_LDFLAGS = ${XSLT_LIBS}
 
 lib_LTLIBRARIES = libmod_transform.la 
@@ -9,8 +9,11 @@ lib_LTLIBRARIES = libmod_transform.la
 make_so:
 	@if test ! -L mod_transform.so ; then ln -s .libs/libmod_transform.so mod_transform.so ; fi
 
+clean:
+	rm -f mod_transform.so
+
 install: make_so
-	@${APXS} -i -n transform mod_transform.so
+	@${APXS_BIN} -i -n transform mod_transform.so
 	@echo ""
 	@echo ""
 	@echo "***********************************************"
@@ -23,7 +26,7 @@ install: make_so
 	@echo ""
 
 activate: make_so
-	@${APXS} -i -a -n transform mod_transform.so
+	@${APXS_BIN} -i -a -n transform mod_transform.so
 	@echo ""
 	@echo ""
 	@echo "***********************************************"
