@@ -25,8 +25,15 @@
 
 #include "mod_transform.h"
 
+
+#include <libgen.h> // for dirnmae()
+
 #include "apr_buckets.h"
 #include "apr_strings.h"
+#include "apr_uri.h"
+
+// Toggle for a few things to aid in debuging.
+// #define _TRANSFORM_DEBUG 1
 
 module AP_MODULE_DECLARE_DATA transform_module;
 
@@ -156,6 +163,248 @@ static int closeCallback(void *context)
     return 0;
 }
 
+// Search a docPtr for a xml-stylesheet PI. Return this Node. Null Otherwise.
+static xmlNodePtr find_stylesheet_node(xmlDocPtr doc) {
+    xmlNodePtr child;
+    child = doc->children;
+    while ((child != NULL) && (child->type != XML_ELEMENT_NODE)) {
+        if ((child->type == XML_PI_NODE) &&
+            (xmlStrEqual(child->name, BAD_CAST "xml-stylesheet"))) {
+            if(child->content != NULL) {
+                return child;
+            }
+        }
+    }
+    return NULL;
+}
+
+/**
+ * This Function is part of a patch to APR-Util: http://issues.apache.org/bugzilla/show_bug.cgi?id=28453
+ * Even if it is commited to APR-Util, it will be one full release cycle before 
+ * it shows up in the HTTPd Release. 
+ * In addition it is doubtful that it will be in the 0.9 Branch, and therefore, 
+ * we would have to wait untill 2.1 becomes 2.2. BAH. Sometimes I hate Apache/APR.
+ * Special Thanks to Nick Kew :)
+ */
+/* Resolve relative to a base.  This means host/etc, and (crucially) path */
+static apr_status_t ex_apr_uri_resolve_relative(apr_pool_t* pool,
+					  apr_uri_t* base,
+					  apr_uri_t* uptr)
+{
+  if (	uptr == NULL
+	|| base == NULL
+	|| ! base->is_initialized
+	|| ! uptr->is_initialized ) {
+	return APR_EGENERAL;
+  }
+ /* The interesting bit is the path.  */
+  if ( uptr->path == NULL ) {
+    if ( uptr->hostname == NULL ) {
+	/* is this compatible with is_initialised?  Harmless in any case */
+	uptr->path = base->path ? base->path : apr_pstrdup(pool, "/") ;
+    }
+    else {
+	/* deal with the idiosyncracy of APR allowing path==NULL
+	** without risk of breaking back-compatibility
+	*/
+	uptr->path = apr_pstrdup(pool, "/") ;
+    }
+  }
+  else if ( uptr->path[0] != '/' ) {
+    size_t baselen ;
+    const char* basepath = base->path ? base->path :"/" ;
+    const char* path = uptr->path ;
+    const char* base_end = strrchr(basepath, '/') ;
+
+    /* if base is nonsensical, bail out */
+    if ( basepath[0] != '/' ) {
+	return APR_EGENERAL;
+    }
+    /* munch "up" components at the start, and chop them from base path */
+    while ( !strncmp(path, "../", 3) ) {
+      while ( base_end > basepath ) {
+	if ( *--base_end == '/' ) {
+	  break ;
+	}
+      }
+      path += 3 ;
+    }
+    /* munch "here" components at the start */
+    while ( !strncmp(path, "./", 2) ) {
+       path += 2 ;
+    }
+    baselen = base_end-basepath+1 ;
+    uptr->path = apr_palloc(pool, baselen + strlen(path) + 1 ) ;
+    memcpy(uptr->path, basepath, baselen) ;
+    strcpy(uptr->path+baselen, path) ;
+  }
+
+ /* The trivial bits are everything-but-path */
+  if ( uptr->scheme == NULL ) {
+	uptr->scheme = base->scheme ;
+  }
+  if ( uptr->hostinfo == NULL ) {
+	uptr->hostinfo = base->hostinfo ;
+  }
+  if ( uptr->user == NULL ) {
+	uptr->user = base->user ;
+  }
+  if ( uptr->password == NULL ) {
+	uptr->password = base->password ;
+  }
+  if ( uptr->hostname == NULL ) {
+	uptr->hostname = base->hostname ;
+  }
+  if ( uptr->port_str == NULL ) {
+	uptr->port_str = base->port_str ;
+  }
+  if ( uptr->hostent == NULL ) {
+	uptr->hostent = base->hostent ;
+  }
+  if ( ! uptr->port ) {
+	uptr->port = base->port ;
+  }
+  return APR_SUCCESS ;
+}
+
+/**
+ * WARNING: Taken From libXSLT. This is NOT part of their Public API!
+ *
+ * xsltParseStylesheetPI:
+ * @value: the value of the PI
+ *
+ * This function checks that the type is text/xml and extracts
+ * the URI-Reference for the stylesheet
+ *
+ * Returns the URI-Reference for the stylesheet or NULL (it need to
+ *         be freed by the caller)
+ */
+#ifdef  IS_BLANK
+#undef	IS_BLANK
+#endif
+#define IS_BLANK(c) (((c) == 0x20) || ((c) == 0x09) || ((c) == 0xA) ||	\
+                     ((c) == 0x0D))
+
+#ifdef	IS_BLANK_NODE
+#undef	IS_BLANK_NODE
+#endif
+#define IS_BLANK_NODE(n)						\
+    (((n)->type == XML_TEXT_NODE) && (xsltIsBlank((n)->content)))
+#define CUR (*cur)
+#define SKIP(val) cur += (val)
+#define NXT(val) cur[(val)]
+#define SKIP_BLANKS	\
+    while (IS_BLANK(CUR)) NEXT
+#define NEXT ((*cur) ?  cur++ : cur)
+
+static xmlChar *
+ex_xsltParseStylesheetPI(const xmlChar *value) {
+    const xmlChar *cur;
+    const xmlChar *start;
+    xmlChar *val;
+    xmlChar tmp;
+    xmlChar *href = NULL;
+    int isXml = 0;
+
+    if (value == NULL)
+	return(NULL);
+
+    cur = value;
+    while (CUR != 0) {
+	SKIP_BLANKS;
+	if ((CUR == 't') && (NXT(1) == 'y') && (NXT(2) == 'p') &&
+	    (NXT(3) == 'e')) {
+	    SKIP(4);
+	    SKIP_BLANKS;
+	    if (CUR != '=')
+		continue;
+	    NEXT;
+	    if ((CUR != '\'') && (CUR != '"'))
+		continue;
+	    tmp = CUR;
+	    NEXT;
+	    start = cur;
+	    while ((CUR != 0) && (CUR != tmp))
+		NEXT;
+	    if (CUR != tmp)
+		continue;
+	    val = xmlStrndup(start, cur - start);
+	    NEXT;
+	    if (val == NULL) 
+		return(NULL);
+	    if ((xmlStrcasecmp(val, BAD_CAST "text/xml")) &&
+		(xmlStrcasecmp(val, BAD_CAST "text/xsl"))) {
+                xmlFree(val);
+		break;
+	    }
+	    isXml = 1;
+	    xmlFree(val);
+	} else if ((CUR == 'h') && (NXT(1) == 'r') && (NXT(2) == 'e') &&
+	    (NXT(3) == 'f')) {
+	    SKIP(4);
+	    SKIP_BLANKS;
+	    if (CUR != '=')
+		continue;
+	    NEXT;
+	    if ((CUR != '\'') && (CUR != '"'))
+		continue;
+	    tmp = CUR;
+	    NEXT;
+	    start = cur;
+	    while ((CUR != 0) && (CUR != tmp))
+		NEXT;
+	    if (CUR != tmp)
+		continue;
+	    if (href == NULL)
+		href = xmlStrndup(start, cur - start);
+	    NEXT;
+	} else {
+	    while ((CUR != 0) && (!IS_BLANK(CUR)))
+		NEXT;
+	}
+            
+    }
+
+    if (!isXml) {
+	if (href != NULL)
+	    xmlFree(href);
+	href = NULL;
+    }
+    return(href);
+}
+
+
+static apr_status_t update_relative_uri(ap_filter_t *f, xmlDocPtr doc) {
+    xmlNodePtr child;
+    apr_uri_t url;
+    apr_uri_t base_url;
+    const char *basedir;
+    char* href;
+    child = find_stylesheet_node(doc);
+    if(child != NULL) {
+        href = ex_xsltParseStylesheetPI(child->content);
+
+        // TODO: This does NOT handle relative Paths. 
+        //       We either need the patch from Nick to be applied to APR-Util,
+        //       or we write our own parsing function.
+        //   For Example: file://../xsl/fasd/foo.xsl
+        //    url.path = "/xsl/fasd/foo.xsl" It SHOULD be "../xsl/fasd/foo.xsl"!
+        if(href && apr_uri_parse(f->r->pool, href, &url) == APR_SUCCESS) {
+            xmlFree(href);
+
+            // TODO: dirname() is not Win32 Portable.
+            // TODO: Replace with custom dirname() like function. strrchr() is our friend.
+            basedir = dirname(f->r->filename);
+            apr_uri_parse(f->r->pool, apr_psprintf(f->r->pool, "file://%s", basedir), &base_url);
+            ex_apr_uri_resolve_relative(f->r->pool, &base_url, &url);
+            href = apr_uri_unparse(f->r->pool, &url, 0);
+            xmlNodeSetContent(child, apr_psprintf(f->r->pool,"type=\"text/xsl\" href=\"%s\"", href));
+            return APR_SUCCESS;
+        }
+    }
+    return !APR_SUCCESS;
+}
+
 static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
 {
     size_t length;
@@ -173,13 +422,18 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     if (!doc)
         return pass_failure(f, "XSLT: Couldn't parse document", notes);
 
-    if (notes->xslt)
-        if (transform = get_cached_xslt(sconf, notes->xslt), transform)
+    if (notes->xslt) {
+        if (transform = get_cached_xslt(sconf, notes->xslt), transform) {
             stylesheet_is_cached = 1;
-        else
+        }
+        else {
             transform = xsltParseStylesheetFile(notes->xslt);
-    else
+        }
+    }
+    else {
+        update_relative_uri(f, doc);
         transform = xsltLoadStylesheetPI(doc);
+    }
 
     if (!transform) {
         return pass_failure(f, "XSLT: Couldn't load transform", notes);
@@ -249,6 +503,9 @@ static apr_status_t transform_filter(ap_filter_t * f,
                 return ap_pass_brigade(f->next, bb);
             }
         }
+        #ifdef _TRANSFORM_DEBUG
+        apr_table_unset(f->r->headers_out, "Last-Modified");
+        #endif
     }
 
     if ((f->r->proto_num >= 1001) && !f->r->main && !f->r->prev)
