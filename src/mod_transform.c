@@ -32,9 +32,6 @@
 #include "apr_strings.h"
 #include "apr_uri.h"
 
-// Toggle for a few things to aid in debuging.
-#define _TRANSFORM_DEBUG
-
 module AP_MODULE_DECLARE_DATA transform_module;
 
 /* BEGIN svr cfg / stylesheet cache section */
@@ -116,7 +113,6 @@ typedef struct
     xmlDocPtr document;
 } modxml_notes;
 
-#define FAIL 500
 
 static apr_status_t pass_failure(ap_filter_t * filter, const char *msg,
                                  modxml_notes * notes)
@@ -137,7 +133,7 @@ static apr_status_t pass_failure(ap_filter_t * filter, const char *msg,
 #else
     ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, filter->r, msg);
 #endif
-    return FAIL;
+    return HTTP_INTERNAL_SERVER_ERROR;;
 }
 
 
@@ -440,22 +436,31 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     }
 
     if (!transform) {
+        // TODO: Need better error reporting here. Why couldn't we Load it?
         return pass_failure(f, "XSLT: Couldn't load transform", notes);
     }
     result = xsltApplyStylesheet(transform, doc, 0);
     if (!result) {
         if (!stylesheet_is_cached)
             xsltFreeStylesheet(transform);
+        // TODO: Need better error reporting here. What Went Wrong?
         return pass_failure(f, "XSLT: Couldn't run transform", notes);
     }
     if (transform->mediaType) {
-        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r, 
-            "Setting content-type to: %s", transform->mediaType);
-        ap_set_content_type(f->r, apr_pstrdup(f->r->pool,transform->mediaType));
+        if (doc->charset) {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r, 
+                "Setting content-type to: '%s; charset=%s'", transform->mediaType, xmlGetCharEncodingName(doc->charset));
+            ap_set_content_type(f->r, apr_psprintf(f->r->pool, "%s; charset=%s", transform->mediaType, xmlGetCharEncodingName(doc->charset)));
+        }
+        else {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r, 
+                "Setting content-type to: '%s'", transform->mediaType);
+            ap_set_content_type(f->r, apr_pstrdup(f->r->pool,transform->mediaType));
+        }
     } else if (transform->method) {
         if (!strcmp(transform->method, "html")) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r, 
-                "Setting content-type to: text/html");
+                "Setting content-type as default to: text/html");
             ap_set_content_type(f->r, apr_pstrdup(f->r->pool, "text/html"));
         }
     }
