@@ -88,7 +88,7 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     if (dconf->opts & XINCLUDES) {
         xmlXIncludeProcessFlags(doc,
                                 XML_PARSE_RECOVER | XML_PARSE_XINCLUDE |
-                                XML_PARSE_NONET);
+                                XML_PARSE_NONET |  XSLT_PARSE_OPTIONS);
     }
 
     if (ap_is_initial_req(f->r) && notes->xslt) {
