@@ -142,27 +142,33 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
         /* Note: If the XSLT We are using doesn't have an encoding, 
            We will use the server default. */
         if (transform->encoding) {
+            /* 
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
                           "Setting content-type to: '%s; charset=%s'",
                           transform->mediaType, transform->encoding);
+            */
             ap_set_content_type(f->r,
                                 apr_psprintf(f->r->pool, "%s; charset=%s",
                                              transform->mediaType,
                                              transform->encoding));
         }
         else if (doc->encoding) {
+            /*
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
                           "Setting content-type to: '%s; charset=%s'",
                           transform->mediaType, doc->encoding);
+            */
             ap_set_content_type(f->r,
                                 apr_psprintf(f->r->pool, "%s; charset=%s",
                                              transform->mediaType,
                                              doc->encoding));
         }
         else {
+            /*
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
                           "Setting content-type to: '%s'",
                           transform->mediaType);
+            */
             ap_set_content_type(f->r,
                                 apr_pstrdup(f->r->pool,
                                             transform->mediaType));
@@ -170,14 +176,16 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     }
     else if (transform->method) {
         if (!strcmp(transform->method, "html")) {
+            /*
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
                           "Setting content-type as default to: text/html");
+            */
             ap_set_content_type(f->r, apr_pstrdup(f->r->pool, "text/html"));
         }
     }
     else {
         ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, f->r,
-                      "mod_transform: Warning, no content type was set!");
+                      "mod_transform: Warning, no content type was set! Fix your XSLT!");
     }
 
     output_ctx.next = f->next;

@@ -239,14 +239,19 @@ static xmlParserInputBufferPtr
     input_ctx->p = subpool;
     input_ctx->bb = NULL;
     input_ctx->f = f;
+
+    /*
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
                       "mod_transform: Subrequest URI: '%s'", URI);
+    */
 
     input_ctx->rr = ap_sub_req_lookup_uri(URI, f->r, NULL);
 
     if (input_ctx->rr->status != HTTP_OK) {
+        /*
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
                       "mod_transform: Subreq Lookup Failed: %d", input_ctx->rr->status);
+        */
         ap_destroy_sub_req(input_ctx->rr);
         apr_pool_destroy(subpool);
         return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
@@ -259,7 +264,7 @@ static xmlParserInputBufferPtr
 
     if(rr_status != OK) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: HTTP Request Failed: %d", rr_status);
+                      "mod_transform: Subrequest for '%s' failed with '%d'", URI, rr_status);
         ap_destroy_sub_req(input_ctx->rr);
         apr_pool_destroy(subpool);
         return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
@@ -299,7 +304,12 @@ xmlParserInputBufferPtr transform_get_input(const char *URI,
 
     if (dconf->opts & USE_APACHE_FS) {
         /* We want to use an Apache based Fliesystem for Libxml. Let the fun begin. */
-        return transform_input_from_subrequest(f, URI, enc);
+        if(strncmp(URI,"file:///etc/xml/catalog", sizeof("file:///etc/xml/catalog")) == 0){
+            return __xmlParserInputBufferCreateFilename(URI, enc);
+        }
+        else {
+            return transform_input_from_subrequest(f, URI, enc);
+        }
     }
     else {
         /* TODO: Fixup Relative Paths here */
@@ -307,3 +317,4 @@ xmlParserInputBufferPtr transform_get_input(const char *URI,
                                                     enc);
     }
 }
+
