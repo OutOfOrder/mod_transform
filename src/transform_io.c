@@ -24,6 +24,7 @@
 
 
 #include "mod_transform.h"
+#include "mod_depends.h"
 #include "mod_transform_private.h"
 
 static apr_status_t io_pass_failure(ap_filter_t * filter, const char *msg,
@@ -152,6 +153,7 @@ static const char *find_relative_uri(ap_filter_t * f, const char *orig_href)
                           &base_url);
             ex_apr_uri_resolve_relative(f->r->pool, &base_url, &url);
             href = apr_uri_unparse(f->r->pool, &url, 0);
+            depends_add_file(f->r, url.path);
             return href;
         }
     }
@@ -248,6 +250,7 @@ static xmlParserInputBufferPtr
 
     ap_add_output_filter(APACHEFS_FILTER_NAME,  input_ctx, input_ctx->rr, f->r->connection);
 
+    depends_add_file(f->r, input_ctx->rr->filename);
     rr_status = ap_run_sub_req(input_ctx->rr);
 
     if(rr_status != OK) {
@@ -281,7 +284,13 @@ xmlParserInputBufferPtr transform_get_input(const char *URI,
                                                    xmlCharEncoding enc)
 {
     ap_filter_t *f = (ap_filter_t *) xmlGenericErrorContext;
-    dir_cfg *dconf = ap_get_module_config(f->r->per_dir_config,
+    dir_cfg *dconf;
+
+    /* Uhm. Our Context got killed somehow. bad. */
+    if(f == NULL)
+        return NULL;
+
+    dconf = ap_get_module_config(f->r->per_dir_config,
                                           &transform_module);
 
     if (URI == NULL)
@@ -290,6 +299,7 @@ xmlParserInputBufferPtr transform_get_input(const char *URI,
     if (dconf->opts & USE_APACHE_FS) {
         /* We want to use an Apache based Fliesystem for Libxml. Let the fun begin. */
         if(strncmp(URI,"file:///etc/xml/catalog", sizeof("file:///etc/xml/catalog")) == 0){
+            depends_add_file(f->r, "/etc/xml/catalog");
             return __xmlParserInputBufferCreateFilename(URI, enc);
         }
         else {
