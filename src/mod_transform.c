@@ -53,7 +53,7 @@ static void *get_cached_xslt(svr_cfg * sconf, const char *descriptor)
         if (!strcmp(descriptor, p->id))
             return p->transform;
 
-    return 0;                   //apr_hash_get(sconf->hash, descriptor, APR_HASH_KEY_STRING) ;
+    return 0;
 }
 
 static const char *transform_cache_xslt(cmd_parms * cmd, void *cfg,
