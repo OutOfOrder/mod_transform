@@ -339,6 +339,7 @@ static void *create_server_cfg(apr_pool_t * p, server_rec * x)
 {
     svr_cfg *cfg = apr_pcalloc(p, sizeof(svr_cfg));
     apr_pool_cleanup_register(p, cfg, transform_cache_free, apr_pool_cleanup_null);
+    cfg->announce = 1;
     return cfg;
 }
 
@@ -444,8 +445,39 @@ static void transform_child_init(apr_pool_t *p, server_rec *s)
     exsltRegisterAll();
 }
 
+static const char *set_announce(cmd_parms *cmd, 
+					   void *struct_ptr, 
+					   int arg)
+{
+    svr_cfg *cfg = ap_get_module_config(cmd->server->module_config,
+			&transform_module);
+
+    const char *err = ap_check_cmd_context(cmd,NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
+    if (err) {
+	return err;
+    }
+    cfg->announce = arg ? 1 : 0;
+
+    return NULL;
+}
+
+static int transform_post_config(apr_pool_t *p, apr_pool_t *log, apr_pool_t *ptemp,
+					server_rec *s)
+{
+    svr_cfg *cfg = ap_get_module_config(s->module_config,
+					&transform_module);
+
+    /* Add version string to Apache headers */
+    if (cfg->announce) {
+	ap_add_version_component(p, PACKAGE_NAME"/"PACKAGE_VERSION);
+    }
+    return OK;
+}
+
 static void transform_hooks(apr_pool_t * p)
 {
+    ap_hook_post_config(transform_post_config, NULL, NULL, APR_HOOK_MIDDLE);
+
     ap_hook_child_init(transform_child_init, NULL, NULL, APR_HOOK_MIDDLE);
 
     ap_hook_post_read_request(init_notes, NULL, NULL, APR_HOOK_MIDDLE);
@@ -467,6 +499,9 @@ static const command_rec transform_cmds[] = {
 
     AP_INIT_RAW_ARGS("TransformOptions", add_opts, NULL, OR_INDEXES,
                      "one or more index options [+|-][]"),
+
+    AP_INIT_FLAG("TransformAnnounce", set_announce, NULL, RSRC_CONF,
+		 "Whether to announce this module in the server header. Default: On"),
     {NULL}
 };
 

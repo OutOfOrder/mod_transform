@@ -74,6 +74,7 @@ transform_xslt_cache;
 typedef struct svr_cfg
 {
     transform_xslt_cache *data;
+    int announce;
 }
 svr_cfg;
 
