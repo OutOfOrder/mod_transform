@@ -1,16 +1,19 @@
-To build
+mod_transform - XSLT and XIncludes Output filter for Apache 2
 
-Run.
-$ ./configure --with-apxs=/usr/sbin/apxs
-$ gmake
-$ gmake install
+Prerequisites:
+   libxslt      >= 1.0.22   http://xmlsoft.org/XSLT/
+   Apache HTTPd >= 2.0.40   http://httpd.apache.org/
 
-Then Edit httpd.conf and add
-LoadModule transform_module modules/mod_transform.so
+Building:
+  Run:
+    $ ./configure --with-apxs=/usr/sbin/apxs
+    $ make
+    $ make install
 
+Configuration:
+  Edit httpd.conf and add:
+    LoadModule transform_module modules/mod_transform.so
 
-Simple usage
-
-AddOutputFilter XSLT xml
-
-To make all xml files be processed by this filter.
+  Simple usage:
+    AddOutputFilter XSLT xml
+  To make all xml files be processed by this filter.
