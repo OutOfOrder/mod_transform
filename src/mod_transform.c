@@ -26,12 +26,21 @@
 
 #include "mod_transform.h"
 
-
-#include <libgen.h> // for dirnmae()
-
+#include "http_config.h"
+#include "http_protocol.h"
+#include "http_core.h"
+#include "http_log.h"
 #include "apr_buckets.h"
 #include "apr_strings.h"
 #include "apr_uri.h"
+#include "apr_tables.h"
+
+#include <libgen.h> // for dirnmae()
+
+#include <libxml/xinclude.h>
+#include <libxslt/xsltutils.h>
+#include <libxslt/transform.h>
+
 
 module AP_MODULE_DECLARE_DATA transform_module;
 

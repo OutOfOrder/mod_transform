@@ -24,17 +24,9 @@
 #ifndef _MOD_TRANSFORM_H
 #define _MOD_TRANSFORM_H
  
-#include "httpd.h"
-#include "http_config.h"
-#include "http_protocol.h"
-#include "http_core.h"
-#include "http_log.h"
-#include "apr_tables.h"
+#include <httpd.h>
 #include <libxml/tree.h>
-#include <libxml/xinclude.h>
 #include <libxslt/xslt.h>
-#include <libxslt/xsltutils.h>
-#include <libxslt/transform.h>
 
 #ifdef __cplusplus
 extern "C" {
