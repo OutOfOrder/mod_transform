@@ -3,7 +3,7 @@
  *    Copyright (c) 2004 Edward Rudd
  *    Copyright (c) 2004 Paul Querna
  *    Authors:    Nick Kew <nick webthing.com>
- *                Edward Rudd <eddie at omegaware dot com>
+ *                Edward Rudd <urkle at outoforder dot com>
  *                Paul Querna <chip at force-elite.com>
  *
  *  This program is free software; you can redistribute it and/or modify
