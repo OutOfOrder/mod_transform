@@ -193,7 +193,7 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     if (transform->mediaType) {
         ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r, 
             "Setting content-type to: %s", transform->mediaType);
-        ap_set_content_type(f->r, transform->mediaType);
+        ap_set_content_type(f->r, apr_pstrdup(f->r->pool,transform->mediaType));
     }
     output_ctx.next = f->next;
     output_ctx.bb = apr_brigade_create(f->r->pool,
