@@ -1,6 +1,6 @@
 /**
- *	Copyright (c) 2002, WebThing Ltd
- *	Author:	Nick Kew <nick@webthing.com>
+ *    Copyright (c) 2002, WebThing Ltd
+ *    Author:    Nick Kew <nick@webthing.com>
  *
  *  Current state: pre-release; some parts work, but none of it
  *  is suitable for an operational server.  Subject to much change
@@ -222,28 +222,28 @@ static apr_status_t transform_filter(ap_filter_t * f,
     xmlParserCtxtPtr ctxt = (xmlParserCtxtPtr) f->ctx;  // will be 0 first time
     apr_status_t ret = APR_SUCCESS;
 
-	/* Check request notes to see any altered configuration */
-	if (!ctxt) {
+    /* Check request notes to see any altered configuration */
+    if (!ctxt) {
         const char *note;
-	/*	if (!f->r->content_type || (strncmp(f->r->content_type, "text/xml", 8) &&
-				strncmp(f->r->content_type, "application/xml", 15) &&
-				strncmp(f->r->content_type, "application/xhtml", 17) &&
+    /*    if (!f->r->content_type || (strncmp(f->r->content_type, "text/xml", 8) &&
+                strncmp(f->r->content_type, "application/xml", 15) &&
+                strncmp(f->r->content_type, "application/xhtml", 17) &&
                                 strncmp(f->r->content_type, "text/html", 9))) {
-			ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, f->r,
-						"Filter removed due to write content type: %s", f->r->content_type);
-			ap_remove_output_filter(f);
-			return ap_pass_brigade(f->next, bb);
-		}*/
-		note = apr_table_get(f->r->notes, "TRANSFORM_MODE");
-		if (note) {
-			if (!apr_strnatcasecmp(note, "off")) {
-				ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, f->r,
-							"Filter removed due to note");
-				ap_remove_output_filter(f);
-				return ap_pass_brigade(f->next, bb);
-			}
-		}
-	}
+            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, f->r,
+                        "Filter removed due to write content type: %s", f->r->content_type);
+            ap_remove_output_filter(f);
+            return ap_pass_brigade(f->next, bb);
+        }*/
+        note = apr_table_get(f->r->notes, "TRANSFORM_MODE");
+        if (note) {
+            if (!apr_strnatcasecmp(note, "off")) {
+                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, f->r,
+                            "Filter removed due to note");
+                ap_remove_output_filter(f);
+                return ap_pass_brigade(f->next, bb);
+            }
+        }
+    }
 
     if ((f->r->proto_num >= 1001) && !f->r->main && !f->r->prev)
         f->r->chunked = 1;
@@ -278,7 +278,7 @@ static apr_status_t transform_filter(ap_filter_t * f,
 }
 
 /* -------------------------------------------------------------
-	Config command stuff
+    Config command stuff
    -------------------------------------------------------------
 */
 
@@ -313,7 +313,7 @@ static int init_notes(request_rec * r)
                                          &transform_module);
     modxml_notes *notes = apr_pcalloc(r->pool, sizeof(modxml_notes));
     notes->xslt = conf->xslt;
-	
+    
     ap_set_module_config(r->request_config, &transform_module, notes);
     return OK;
 }
