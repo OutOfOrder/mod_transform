@@ -1,5 +1,5 @@
 dnl Required initializer
-AC_INIT(mod_transform, 0.6.0)
+AC_INIT(mod_transform, 0.7.0)
 OOO_CONFIG_NICE(config.nice)
 AC_PREREQ(2.53)
 AC_CONFIG_SRCDIR([src/mod_transform.c])
