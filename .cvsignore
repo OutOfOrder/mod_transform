@@ -20,3 +20,5 @@ stamp-h.in
 mod_transform.pws
 .tm_project.cache
 mod_transform.prj.bak
+TODO
+*.tar.gz

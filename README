@@ -1,0 +1,16 @@
+To build
+
+Run.
+$ ./configure --with-apxs=/usr/sbin/apxs
+$ gmake
+$ gmake install
+
+Then Edit httpd.conf and add
+LoadModule transform_module modules/mod_transform.so
+
+
+Simple usage
+
+AddOutputFilter XSLT xml
+
+To make all xml files be processed by this filter.
