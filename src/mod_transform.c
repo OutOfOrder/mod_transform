@@ -35,7 +35,7 @@
 #include "apr_uri.h"
 #include "apr_tables.h"
 
-#include <libgen.h> // for dirnmae()
+#include <libgen.h>             // for dirnmae()
 
 #include <libxml/xinclude.h>
 #include <libxslt/xsltutils.h>
@@ -71,11 +71,10 @@ static void *get_cached_xslt(svr_cfg * sconf, const char *descriptor)
 }
 
 static const char *transform_cache_xslt(cmd_parms * cmd, void *cfg,
-                                    const char *url, const char *path)
+                                        const char *url, const char *path)
 {
-    svr_cfg *conf =
-        ap_get_module_config(cmd->server->module_config,
-                             &transform_module);
+    svr_cfg *conf = ap_get_module_config(cmd->server->module_config,
+                                         &transform_module);
     xsltStylesheetPtr xslt = xsltParseStylesheetFile(path);
     if (url && path && xslt) {
         cached_xslt *me = apr_palloc(cmd->pool, sizeof(cached_xslt));
@@ -127,10 +126,10 @@ typedef struct
 static void transform_error_cb(void *ctx, const char *msg, ...)
 {
     va_list args;
-    char* fmsg;
-    ap_filter_t* f = (ap_filter_t*)ctx;
+    char *fmsg;
+    ap_filter_t *f = (ap_filter_t *) ctx;
     va_start(args, msg);
-    fmsg = apr_pvsprintf(f->r->pool,msg,args);
+    fmsg = apr_pvsprintf(f->r->pool, msg, args);
     va_end(args);
     ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, f->r, fmsg);
 }
@@ -184,13 +183,14 @@ static int closeCallback(void *context)
 }
 
 // Search a docPtr for a xml-stylesheet PI. Return this Node. Null Otherwise.
-static xmlNodePtr find_stylesheet_node(xmlDocPtr doc) {
+static xmlNodePtr find_stylesheet_node(xmlDocPtr doc)
+{
     xmlNodePtr child;
     child = doc->children;
     while ((child != NULL) && (child->type != XML_ELEMENT_NODE)) {
         if ((child->type == XML_PI_NODE) &&
             (xmlStrEqual(child->name, BAD_CAST "xml-stylesheet"))) {
-            if(child->content != NULL) {
+            if (child->content != NULL) {
                 return child;
             }
         }
@@ -208,84 +208,82 @@ static xmlNodePtr find_stylesheet_node(xmlDocPtr doc) {
  * Special Thanks to Nick Kew :)
  */
 /* Resolve relative to a base.  This means host/etc, and (crucially) path */
-static apr_status_t ex_apr_uri_resolve_relative(apr_pool_t* pool,
-					  apr_uri_t* base,
-					  apr_uri_t* uptr)
+static apr_status_t ex_apr_uri_resolve_relative(apr_pool_t * pool,
+                                                apr_uri_t * base,
+                                                apr_uri_t * uptr)
 {
-  if (	uptr == NULL
-	|| base == NULL
-	|| ! base->is_initialized
-	|| ! uptr->is_initialized ) {
-	return APR_EGENERAL;
-  }
- /* The interesting bit is the path.  */
-  if ( uptr->path == NULL ) {
-    if ( uptr->hostname == NULL ) {
-	/* is this compatible with is_initialised?  Harmless in any case */
-	uptr->path = base->path ? base->path : apr_pstrdup(pool, "/") ;
+    if (uptr == NULL
+        || base == NULL || !base->is_initialized || !uptr->is_initialized) {
+        return APR_EGENERAL;
     }
-    else {
-	/* deal with the idiosyncracy of APR allowing path==NULL
-	** without risk of breaking back-compatibility
-	*/
-	uptr->path = apr_pstrdup(pool, "/") ;
+    /* The interesting bit is the path.  */
+    if (uptr->path == NULL) {
+        if (uptr->hostname == NULL) {
+            /* is this compatible with is_initialised?  Harmless in any case */
+            uptr->path = base->path ? base->path : apr_pstrdup(pool, "/");
+        }
+        else {
+            /* deal with the idiosyncracy of APR allowing path==NULL
+             ** without risk of breaking back-compatibility
+             */
+            uptr->path = apr_pstrdup(pool, "/");
+        }
     }
-  }
-  else if ( uptr->path[0] != '/' ) {
-    size_t baselen ;
-    const char* basepath = base->path ? base->path :"/" ;
-    const char* path = uptr->path ;
-    const char* base_end = strrchr(basepath, '/') ;
+    else if (uptr->path[0] != '/') {
+        size_t baselen;
+        const char *basepath = base->path ? base->path : "/";
+        const char *path = uptr->path;
+        const char *base_end = strrchr(basepath, '/');
 
-    /* if base is nonsensical, bail out */
-    if ( basepath[0] != '/' ) {
-	return APR_EGENERAL;
+        /* if base is nonsensical, bail out */
+        if (basepath[0] != '/') {
+            return APR_EGENERAL;
+        }
+        /* munch "up" components at the start, and chop them from base path */
+        while (!strncmp(path, "../", 3)) {
+            while (base_end > basepath) {
+                if (*--base_end == '/') {
+                    break;
+                }
+            }
+            path += 3;
+        }
+        /* munch "here" components at the start */
+        while (!strncmp(path, "./", 2)) {
+            path += 2;
+        }
+        baselen = base_end - basepath + 1;
+        uptr->path = apr_palloc(pool, baselen + strlen(path) + 1);
+        memcpy(uptr->path, basepath, baselen);
+        strcpy(uptr->path + baselen, path);
     }
-    /* munch "up" components at the start, and chop them from base path */
-    while ( !strncmp(path, "../", 3) ) {
-      while ( base_end > basepath ) {
-	if ( *--base_end == '/' ) {
-	  break ;
-	}
-      }
-      path += 3 ;
-    }
-    /* munch "here" components at the start */
-    while ( !strncmp(path, "./", 2) ) {
-       path += 2 ;
-    }
-    baselen = base_end-basepath+1 ;
-    uptr->path = apr_palloc(pool, baselen + strlen(path) + 1 ) ;
-    memcpy(uptr->path, basepath, baselen) ;
-    strcpy(uptr->path+baselen, path) ;
-  }
 
- /* The trivial bits are everything-but-path */
-  if ( uptr->scheme == NULL ) {
-	uptr->scheme = base->scheme ;
-  }
-  if ( uptr->hostinfo == NULL ) {
-	uptr->hostinfo = base->hostinfo ;
-  }
-  if ( uptr->user == NULL ) {
-	uptr->user = base->user ;
-  }
-  if ( uptr->password == NULL ) {
-	uptr->password = base->password ;
-  }
-  if ( uptr->hostname == NULL ) {
-	uptr->hostname = base->hostname ;
-  }
-  if ( uptr->port_str == NULL ) {
-	uptr->port_str = base->port_str ;
-  }
-  if ( uptr->hostent == NULL ) {
-	uptr->hostent = base->hostent ;
-  }
-  if ( ! uptr->port ) {
-	uptr->port = base->port ;
-  }
-  return APR_SUCCESS ;
+    /* The trivial bits are everything-but-path */
+    if (uptr->scheme == NULL) {
+        uptr->scheme = base->scheme;
+    }
+    if (uptr->hostinfo == NULL) {
+        uptr->hostinfo = base->hostinfo;
+    }
+    if (uptr->user == NULL) {
+        uptr->user = base->user;
+    }
+    if (uptr->password == NULL) {
+        uptr->password = base->password;
+    }
+    if (uptr->hostname == NULL) {
+        uptr->hostname = base->hostname;
+    }
+    if (uptr->port_str == NULL) {
+        uptr->port_str = base->port_str;
+    }
+    if (uptr->hostent == NULL) {
+        uptr->hostent = base->hostent;
+    }
+    if (!uptr->port) {
+        uptr->port = base->port;
+    }
+    return APR_SUCCESS;
 }
 
 /**
@@ -318,8 +316,8 @@ static apr_status_t ex_apr_uri_resolve_relative(apr_pool_t* pool,
     while (IS_BLANK(CUR)) NEXT
 #define NEXT ((*cur) ?  cur++ : cur)
 
-static xmlChar *
-ex_xsltParseStylesheetPI(const xmlChar *value) {
+static xmlChar *ex_xsltParseStylesheetPI(const xmlChar * value)
+{
     const xmlChar *cur;
     const xmlChar *start;
     xmlChar *val;
@@ -328,81 +326,84 @@ ex_xsltParseStylesheetPI(const xmlChar *value) {
     int isXml = 0;
 
     if (value == NULL)
-	return(NULL);
+        return (NULL);
 
     cur = value;
     while (CUR != 0) {
-	SKIP_BLANKS;
-	if ((CUR == 't') && (NXT(1) == 'y') && (NXT(2) == 'p') &&
-	    (NXT(3) == 'e')) {
-	    SKIP(4);
-	    SKIP_BLANKS;
-	    if (CUR != '=')
-		continue;
-	    NEXT;
-	    if ((CUR != '\'') && (CUR != '"'))
-		continue;
-	    tmp = CUR;
-	    NEXT;
-	    start = cur;
-	    while ((CUR != 0) && (CUR != tmp))
-		NEXT;
-	    if (CUR != tmp)
-		continue;
-	    val = xmlStrndup(start, cur - start);
-	    NEXT;
-	    if (val == NULL) 
-		return(NULL);
-	    if ((xmlStrcasecmp(val, BAD_CAST "text/xml")) &&
-		(xmlStrcasecmp(val, BAD_CAST "text/xsl"))) {
+        SKIP_BLANKS;
+        if ((CUR == 't') && (NXT(1) == 'y') && (NXT(2) == 'p') &&
+            (NXT(3) == 'e')) {
+            SKIP(4);
+            SKIP_BLANKS;
+            if (CUR != '=')
+                continue;
+            NEXT;
+            if ((CUR != '\'') && (CUR != '"'))
+                continue;
+            tmp = CUR;
+            NEXT;
+            start = cur;
+            while ((CUR != 0) && (CUR != tmp))
+                NEXT;
+            if (CUR != tmp)
+                continue;
+            val = xmlStrndup(start, cur - start);
+            NEXT;
+            if (val == NULL)
+                return (NULL);
+            if ((xmlStrcasecmp(val, BAD_CAST "text/xml")) &&
+                (xmlStrcasecmp(val, BAD_CAST "text/xsl"))) {
                 xmlFree(val);
-		break;
-	    }
-	    isXml = 1;
-	    xmlFree(val);
-	} else if ((CUR == 'h') && (NXT(1) == 'r') && (NXT(2) == 'e') &&
-	    (NXT(3) == 'f')) {
-	    SKIP(4);
-	    SKIP_BLANKS;
-	    if (CUR != '=')
-		continue;
-	    NEXT;
-	    if ((CUR != '\'') && (CUR != '"'))
-		continue;
-	    tmp = CUR;
-	    NEXT;
-	    start = cur;
-	    while ((CUR != 0) && (CUR != tmp))
-		NEXT;
-	    if (CUR != tmp)
-		continue;
-	    if (href == NULL)
-		href = xmlStrndup(start, cur - start);
-	    NEXT;
-	} else {
-	    while ((CUR != 0) && (!IS_BLANK(CUR)))
-		NEXT;
-	}
-            
+                break;
+            }
+            isXml = 1;
+            xmlFree(val);
+        }
+        else if ((CUR == 'h') && (NXT(1) == 'r') && (NXT(2) == 'e') &&
+                 (NXT(3) == 'f')) {
+            SKIP(4);
+            SKIP_BLANKS;
+            if (CUR != '=')
+                continue;
+            NEXT;
+            if ((CUR != '\'') && (CUR != '"'))
+                continue;
+            tmp = CUR;
+            NEXT;
+            start = cur;
+            while ((CUR != 0) && (CUR != tmp))
+                NEXT;
+            if (CUR != tmp)
+                continue;
+            if (href == NULL)
+                href = xmlStrndup(start, cur - start);
+            NEXT;
+        }
+        else {
+            while ((CUR != 0) && (!IS_BLANK(CUR)))
+                NEXT;
+        }
+
     }
 
     if (!isXml) {
-	if (href != NULL)
-	    xmlFree(href);
-	href = NULL;
+        if (href != NULL)
+            xmlFree(href);
+        href = NULL;
     }
-    return(href);
+    return (href);
 }
 
 
-static apr_status_t update_relative_uri(ap_filter_t *f, xmlDocPtr doc) {
+static apr_status_t update_relative_uri(ap_filter_t * f, xmlDocPtr doc)
+{
     xmlNodePtr child;
     apr_uri_t url;
     apr_uri_t base_url;
     const char *basedir;
-    char* href;
+    char *href;
     child = find_stylesheet_node(doc);
-    if(child != NULL) {
+    if (child != NULL) {
         href = ex_xsltParseStylesheetPI(child->content);
 
         // TODO: This does NOT handle relative Paths. 
@@ -410,16 +411,21 @@ static apr_status_t update_relative_uri(ap_filter_t *f, xmlDocPtr doc) {
         //       or we write our own parsing function.
         //   For Example: file://../xsl/fasd/foo.xsl
         //    url.path = "/xsl/fasd/foo.xsl" It SHOULD be "../xsl/fasd/foo.xsl"!
-        if(href && apr_uri_parse(f->r->pool, href, &url) == APR_SUCCESS) {
+        if (href && apr_uri_parse(f->r->pool, href, &url) == APR_SUCCESS) {
             xmlFree(href);
 
             // TODO: dirname() is not Win32 Portable.
             // TODO: Replace with custom dirname() like function. strrchr() is our friend.
             basedir = dirname(f->r->filename);
-            apr_uri_parse(f->r->pool, apr_psprintf(f->r->pool, "file://%s/", basedir), &base_url);
+            apr_uri_parse(f->r->pool,
+                          apr_psprintf(f->r->pool, "file://%s/", basedir),
+                          &base_url);
             ex_apr_uri_resolve_relative(f->r->pool, &base_url, &url);
             href = apr_uri_unparse(f->r->pool, &url, 0);
-            xmlNodeSetContent(child, apr_psprintf(f->r->pool,"type=\"text/xsl\" href=\"%s\"", href));
+            xmlNodeSetContent(child,
+                              apr_psprintf(f->r->pool,
+                                           "type=\"text/xsl\" href=\"%s\"",
+                                           href));
             return APR_SUCCESS;
         }
     }
@@ -441,13 +447,14 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
 
     if (!doc)
         return pass_failure(f, "XSLT: Couldn't parse document", notes);
-    #if LIBXML_VERSION >= 20603
+#if LIBXML_VERSION >= 20603
     // TODO: Add a Configuration Directive to enable/disable xincludes?
     // TODO: Make an easy way to enable/disable Loading Files from the Network.
-    xmlXIncludeProcessFlags(doc, XML_PARSE_RECOVER|XML_PARSE_XINCLUDE|XML_PARSE_NONET);
-    #else
+    xsltSetXIncludeDefault(1);
+    //    xmlXIncludeProcessFlags(doc, XML_PARSE_RECOVER|XML_PARSE_XINCLUDE|XML_PARSE_NONET);
+#else
     xmlXIncludeProcess(doc);
-    #endif
+#endif
     if (notes->xslt) {
         if (transform = get_cached_xslt(sconf, notes->xslt), transform) {
             stylesheet_is_cached = 1;
@@ -476,19 +483,36 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
         // Note: If the XSLT We are using doesn't have an encoding, 
         //       We will use the server default.
         if (transform->encoding) {
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r, 
-                "Setting content-type to: '%s; charset=%s'", transform->mediaType, transform->encoding);
-            ap_set_content_type(f->r, apr_psprintf(f->r->pool, "%s; charset=%s", transform->mediaType, transform->encoding));
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
+                          "Setting content-type to: '%s; charset=%s'",
+                          transform->mediaType, transform->encoding);
+            ap_set_content_type(f->r,
+                                apr_psprintf(f->r->pool, "%s; charset=%s",
+                                             transform->mediaType,
+                                             transform->encoding));
+        }
+        else if (doc->encoding) {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
+                          "Setting content-type to: '%s; charset=%s'",
+                          transform->mediaType, doc->encoding);
+            ap_set_content_type(f->r,
+                                apr_psprintf(f->r->pool, "%s; charset=%s",
+                                             transform->mediaType,
+                                             doc->encoding));
         }
         else {
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r, 
-                "Setting content-type to: '%s'", transform->mediaType);
-            ap_set_content_type(f->r, apr_pstrdup(f->r->pool,transform->mediaType));
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
+                          "Setting content-type to: '%s'",
+                          transform->mediaType);
+            ap_set_content_type(f->r,
+                                apr_pstrdup(f->r->pool,
+                                            transform->mediaType));
         }
-    } else if (transform->method) {
+    }
+    else if (transform->method) {
         if (!strcmp(transform->method, "html")) {
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r, 
-                "Setting content-type as default to: text/html");
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
+                          "Setting content-type as default to: text/html");
             ap_set_content_type(f->r, apr_pstrdup(f->r->pool, "text/html"));
         }
     }
@@ -510,35 +534,34 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     return APR_SUCCESS;
 }
 
-static apr_status_t transform_filter(ap_filter_t * f,
-                                      apr_bucket_brigade * bb)
+static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
 {
     apr_bucket *b;
     const char *buf = 0;
     apr_size_t bytes = 0;
     xmlParserCtxtPtr ctxt = (xmlParserCtxtPtr) f->ctx;  // will be 0 first time
     apr_status_t ret = APR_SUCCESS;
-    xmlSetGenericErrorFunc((void*)f, transform_error_cb);
+    xmlSetGenericErrorFunc((void *) f, transform_error_cb);
     /* Check request notes to see any altered configuration */
     if (!ctxt) {
         const char *note;
         /* unset content-length */
         apr_table_unset(f->r->headers_out, "Content-Length");
-        
-    /*    if (!f->r->content_type || (strncmp(f->r->content_type, "text/xml", 8) &&
-                strncmp(f->r->content_type, "application/xml", 15) &&
-                strncmp(f->r->content_type, "application/xhtml", 17) &&
-                                strncmp(f->r->content_type, "text/html", 9))) {
-            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, f->r,
-                        "Filter removed due to write content type: %s", f->r->content_type);
-            ap_remove_output_filter(f);
-            return ap_pass_brigade(f->next, bb);
-        }*/
+
+        /*    if (!f->r->content_type || (strncmp(f->r->content_type, "text/xml", 8) &&
+           strncmp(f->r->content_type, "application/xml", 15) &&
+           strncmp(f->r->content_type, "application/xhtml", 17) &&
+           strncmp(f->r->content_type, "text/html", 9))) {
+           ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, f->r,
+           "Filter removed due to write content type: %s", f->r->content_type);
+           ap_remove_output_filter(f);
+           return ap_pass_brigade(f->next, bb);
+           } */
         note = apr_table_get(f->r->notes, "TRANSFORM_MODE");
         if (note) {
             if (!apr_strnatcasecmp(note, "off")) {
                 ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, f->r,
-                            "Filter removed due to note");
+                              "Filter removed due to note");
                 ap_remove_output_filter(f);
                 return ap_pass_brigade(f->next, bb);
             }
@@ -575,9 +598,9 @@ static apr_status_t transform_filter(ap_filter_t * f,
             }
             else if (bytes >= 4) {
                 f->ctx = ctxt = xmlCreatePushParserCtxt(0, 0, buf, bytes, 0);
-                #if LIBXML_VERSION >= 20600
+#if LIBXML_VERSION >= 20600
                 xmlCtxtUseOptions(ctxt, XML_PARSE_NOENT | XML_PARSE_NOCDATA);
-                #endif
+#endif
                 ctxt->directory = xmlParserGetDirectory(f->r->filename);
             }
         }
@@ -623,7 +646,7 @@ static int init_notes(request_rec * r)
                                          &transform_module);
     modxml_notes *notes = apr_pcalloc(r->pool, sizeof(modxml_notes));
     notes->xslt = conf->xslt;
-    
+
     ap_set_module_config(r->request_config, &transform_module, notes);
     return OK;
 }
