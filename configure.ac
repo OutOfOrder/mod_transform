@@ -18,6 +18,11 @@ AM_PATH_XSLT(1.0.22,
     AC_MSG_ERROR([could not find libxslt])
 )
 
+AM_PATH_XML2(2.6.11,
+    ,
+    AC_MSG_ERROR([could not find libxml2])
+)
+
 AP_VERSION=2.0.40
 CHECK_APACHE(,$AP_VERSION,
     :,:,
