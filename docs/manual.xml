@@ -31,6 +31,6 @@
   </articleinfo>
   <section>
     <title>Introduction</title>
-    <para>&modulename; is a Apache 2 filter module that performs XSL Tranformations to the XML ouput if the previous filter or handler.</para>
+    <para>&modulename; is an Apache 2 filter module that performs XSL Tranformations to the XML ouput if the previous filter or handler.</para>
   </section>
 </article>
