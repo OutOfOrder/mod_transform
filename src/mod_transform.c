@@ -24,12 +24,15 @@
 
 #define XSLT_FILTER_NAME "XSLT"
 
+#define APACHEFS_FILTER_NAME "transform_store_brigade"
+
 #include "mod_transform.h"
 
 #include "http_config.h"
 #include "http_protocol.h"
 #include "http_core.h"
 #include "http_log.h"
+#include "http_request.h"
 #include "apr_buckets.h"
 #include "apr_strings.h"
 #include "apr_uri.h"
@@ -39,8 +42,6 @@
 #include <libxml/xmlIO.h>
 #include <libxslt/xsltutils.h>
 #include <libxslt/transform.h>
-
-#include <libgen.h> /* for dirname() */
 
 module AP_MODULE_DECLARE_DATA transform_module;
 
@@ -55,12 +56,14 @@ typedef struct transform_xslt_cache
     const char *id;
     xsltStylesheetPtr transform;
     struct transform_xslt_cache *next;
-} transform_xslt_cache;
+}
+transform_xslt_cache;
 
 typedef struct svr_cfg
 {
     transform_xslt_cache *data;
-} svr_cfg;
+}
+svr_cfg;
 
 static void *transform_get_cached(svr_cfg * sconf, const char *descriptor)
 {
@@ -78,24 +81,26 @@ static void *transform_get_cached(svr_cfg * sconf, const char *descriptor)
 }
 
 static const char *transform_add_xslt_cache(cmd_parms * cmd, void *cfg,
-                                        const char *url, const char *path)
+                                            const char *url, const char *path)
 {
     svr_cfg *conf = ap_get_module_config(cmd->server->module_config,
                                          &transform_module);
     xsltStylesheetPtr xslt = xsltParseStylesheetFile(path);
     if (url && path && xslt) {
-        transform_xslt_cache *me = apr_palloc(cmd->pool, sizeof(transform_xslt_cache));
+        transform_xslt_cache *me =
+            apr_palloc(cmd->pool, sizeof(transform_xslt_cache));
         me->id = apr_pstrdup(cmd->pool, url);
         me->transform = xslt;
         me->next = conf->data;
         conf->data = me;
         ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, cmd->pool,
-                      "Cached precompiled XSLT %s", url);
+                      "mod_transform: Cached Precompiled XSL: %s", url);
         return NULL;
     }
     else {
         ap_log_perror(APLOG_MARK, APLOG_ERR, 0, cmd->pool,
-                      "Error fetching or compiling XSLT from %s", path);
+                      "mod_transform: Error fetching or compiling XSL from: %s",
+                      path);
         return "Error trying to precompile XSLT";
     }
 }
@@ -124,13 +129,15 @@ typedef struct dir_cfg
     apr_int32_t opts;
     apr_int32_t incremented_opts;
     apr_int32_t decremented_opts;
-} dir_cfg;
+}
+dir_cfg;
 
 typedef struct
 {
     const char *xslt;
     xmlDocPtr document;
-} modxml_notes;
+}
+modxml_notes;
 
 
 static void transform_error_cb(void *ctx, const char *msg, ...)
@@ -141,13 +148,15 @@ static void transform_error_cb(void *ctx, const char *msg, ...)
     va_start(args, msg);
     fmsg = apr_pvsprintf(f->r->pool, msg, args);
     va_end(args);
-    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, f->r, fmsg);
+    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, f->r,
+                  "mod_transform::libxml2_error: %s", fmsg);
 }
 
 static apr_status_t pass_failure(ap_filter_t * filter, const char *msg,
                                  modxml_notes * notes)
 {
-    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, filter->r, msg);
+    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, filter->r, "mod_transform: %s",
+                  msg);
     xmlSetGenericErrorFunc(NULL, NULL);
     return HTTP_INTERNAL_SERVER_ERROR;;
 }
@@ -157,25 +166,23 @@ typedef struct
 {
     ap_filter_t *next;
     apr_bucket_brigade *bb;
-} transform_output_ctx;
+}
+transform_xmlio_output_ctx;
 
-typedef struct
-{
-    ap_filter_t *f;
-} transform_input_ctx;
-
-static int transform_output_write(void *context, const char *buffer, int len)
+static int transform_xmlio_output_write(void *context, const char *buffer,
+                                        int len)
 {
     if (len > 0) {
-        transform_output_ctx *octx = (transform_output_ctx *) context;
+        transform_xmlio_output_ctx *octx =
+            (transform_xmlio_output_ctx *) context;
         ap_fwrite(octx->next, octx->bb, buffer, len);
     }
     return len;
 }
 
-static int transform_output_close(void *context)
+static int transform_xmlio_output_close(void *context)
 {
-    transform_output_ctx *octx = (transform_output_ctx *) context;
+    transform_xmlio_output_ctx *octx = (transform_xmlio_output_ctx *) context;
     apr_bucket *b = apr_bucket_eos_create(octx->bb->bucket_alloc);
     APR_BRIGADE_INSERT_TAIL(octx->bb, b);
     return 0;
@@ -187,7 +194,7 @@ static int transform_output_close(void *context)
  * it shows up in the HTTPd Release. 
  * In addition it is doubtful that it will be in the 0.9 Branch, and therefore, 
  * we would have to wait untill 2.1 becomes 2.2. BAH. Sometimes I hate Apache/APR.
- * Special Thanks to Nick Kew :)
+ * Thanks to Nick Kew :)
  */
 /* Resolve relative to a base.  This means host/etc, and (crucially) path */
 static apr_status_t ex_apr_uri_resolve_relative(apr_pool_t * pool,
@@ -268,17 +275,15 @@ static apr_status_t ex_apr_uri_resolve_relative(apr_pool_t * pool,
     return APR_SUCCESS;
 }
 
-static const char* find_relative_uri(ap_filter_t * f, const char* orig_href)
+static const char *find_relative_uri(ap_filter_t * f, const char *orig_href)
 {
     apr_uri_t url;
     apr_uri_t base_url;
     const char *basedir;
-    char* href;
+    char *href;
     if (orig_href) {
         if (apr_uri_parse(f->r->pool, orig_href, &url) == APR_SUCCESS) {
-            // TODO: dirname() is not Win32 Portable.
-            // TODO: Replace with custom dirname() like function. strrchr() is our friend.
-            basedir = dirname(apr_pstrdup(f->r->pool, f->r->filename));
+            basedir = ap_make_dirstr_parent(f->r->pool, f->r->filename);
             apr_uri_parse(f->r->pool,
                           apr_psprintf(f->r->pool, "file://%s/", basedir),
                           &base_url);
@@ -290,39 +295,130 @@ static const char* find_relative_uri(ap_filter_t * f, const char* orig_href)
     return orig_href;
 }
 
-static xmlParserInputBufferPtr transform_get_input(const char *URI, xmlCharEncoding enc)
+/* This is our custom hack filter for getting the contents of a file into a 
+   bucket brigade. No one else should ever use it! */
+static apr_status_t apachefs_filter(ap_filter_t * f, apr_bucket_brigade * bb)
 {
+    apr_bucket_brigade *data = f->ctx;
+    return ap_save_brigade(f, &data, &bb, f->r->pool);
+}
+
+typedef struct
+{
+    ap_filter_t *f;
+    request_rec *rr;
+    apr_bucket_brigade *bb;
+}
+transform_xmlio_input_ctx;
+
+static int transform_xmlio_input_read(void *context, char *buffer, int len)
+{
+    apr_status_t rv;
+    apr_size_t slen;
+    apr_bucket *e;
+    apr_bucket_brigade *newbb;
+    transform_xmlio_input_ctx *input_ctx = context;
+    slen = len;
+
+    rv = apr_brigade_flatten(input_ctx->bb, buffer, &slen);
+
+    if (rv != APR_SUCCESS) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: Unable to Flatten Brigade into xmlIO Buffer");
+        return -1;
+    }
+
+    rv = apr_brigade_partition(input_ctx->bb, slen, &e);
+    if (rv != APR_SUCCESS) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: Brigade Partition Failed!");
+        return -1;
+    }
+
+    newbb = apr_brigade_split(input_ctx->bb, e);
+
+    rv = apr_brigade_destroy(input_ctx->bb);
+    if (rv != APR_SUCCESS) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: Brigade Destroy Failed!");
+        return -1;
+    }
+
+    input_ctx->bb = newbb;
+    return slen;
+}
+
+static int transform_xmlio_input_close(void *context)
+{
+    transform_xmlio_input_ctx *input_ctx = context;
+    ap_destroy_sub_req(input_ctx->rr);
+    return 0;
+}
+
+static xmlParserInputBufferPtr transform_input_from_subrequest(ap_filter_t *
+                                                               f,
+                                                               const char
+                                                               *URI,
+                                                               xmlCharEncoding
+                                                               enc)
+{
+    int rr_status;
     xmlParserInputBufferPtr ret;
-    transform_input_ctx* input_ctx;
-    ap_filter_t *f = (ap_filter_t *)xmlGenericErrorContext;
+    transform_xmlio_input_ctx *input_ctx;
+    ap_filter_t cf;
+
+    input_ctx = apr_palloc(f->r->pool, sizeof(input_ctx));
+    cf.frec = ap_get_output_filter_handle(APACHEFS_FILTER_NAME);
+    cf.next = NULL;
+    cf.ctx = input_ctx->bb;
+    cf.r = f->r;
+    cf.c = NULL;
+    input_ctx->rr = ap_sub_req_lookup_uri(URI, f->r, &cf);
+    if (input_ctx->rr->status != HTTP_OK) {
+        ap_destroy_sub_req(input_ctx->rr);
+        return NULL;
+    }
+
+    rr_status = ap_run_sub_req(input_ctx->rr);
+
+    ret = xmlAllocParserInputBuffer(enc);
+
+    if (ret != NULL) {
+        input_ctx = apr_palloc(f->r->pool, sizeof(input_ctx));
+        input_ctx->f = f;
+        ret->context = input_ctx;
+        ret->readcallback = transform_xmlio_input_read;
+        ret->closecallback = transform_xmlio_input_close;
+    }
+
+    return ret;
+}
+
+static xmlParserInputBufferPtr transform_get_input(const char *URI,
+                                                   xmlCharEncoding enc)
+{
+    ap_filter_t *f = (ap_filter_t *) xmlGenericErrorContext;
     dir_cfg *dconf = ap_get_module_config(f->r->per_dir_config,
                                           &transform_module);
 
-    if (URI == NULL) 
+    if (URI == NULL)
         return NULL;
 
-    if (dconf->opts & USE_APACHE_FS && 0) {
+    if (dconf->opts & USE_APACHE_FS) {
         /* We want to use an Apache based Fliesystem for Libxml. Let the fun begin. */
-        ret = xmlAllocParserInputBuffer(enc);
-        if (ret != NULL) {
-            input_ctx = apr_palloc(f->r->pool, sizeof(input_ctx));
-            input_ctx->f = f;
-            ret->context = input_ctx;
-//            ret->readcallback = xmlInputCallbackTable[i].readcallback;
-//            ret->closecallback = xmlInputCallbackTable[i].closecallback;
-        }
+        return transform_input_from_subrequest(f, URI, enc);
     }
     else {
         /* TODO: Fixup Relative Paths here */
-        ret = __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI), enc);
+        return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
+                                                    enc);
     }
-    return ret;
 }
 
 static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
 {
     size_t length;
-    transform_output_ctx output_ctx;
+    transform_xmlio_output_ctx output_ctx;
     int stylesheet_is_cached = 0;
     xsltStylesheetPtr transform = NULL;
     xmlDocPtr result = NULL;
@@ -379,7 +475,7 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
 
     if (transform->mediaType) {
         /* Note: If the XSLT We are using doesn't have an encoding, 
-               We will use the server default. */
+           We will use the server default. */
         if (transform->encoding) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
                           "Setting content-type to: '%s; charset=%s'",
@@ -415,15 +511,17 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
         }
     }
     else {
-            ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, f->r,
-                          "mod_transform: Warning, no content type was set!");
+        ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, f->r,
+                      "mod_transform: Warning, no content type was set!");
     }
 
     output_ctx.next = f->next;
     output_ctx.bb = apr_brigade_create(f->r->pool,
                                        apr_bucket_alloc_create(f->r->pool));
-    output = xmlOutputBufferCreateIO(&transform_output_write, &transform_output_close,
-                                     &output_ctx, 0);
+    output =
+        xmlOutputBufferCreateIO(&transform_xmlio_output_write,
+                                &transform_xmlio_output_close, &output_ctx,
+                                0);
     length = xsltSaveResultTo(output, result, transform);
     if (!f->r->chunked)
         ap_set_content_length(f->r, length);
@@ -454,9 +552,9 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
         apr_table_unset(f->r->headers_out, "Content-Length");
 
         /* TODO: Find a better way to determine if any resources needed to 
-              create this document have changed.
-         apr_table_unset(f->r->headers_out, "Last-Modified"); 
-        */
+           create this document have changed.
+           apr_table_unset(f->r->headers_out, "Last-Modified"); 
+         */
     }
 
     if ((f->r->proto_num >= 1001) && !f->r->main && !f->r->prev)
@@ -465,7 +563,7 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
     for (b = APR_BRIGADE_FIRST(bb);
          b != APR_BRIGADE_SENTINEL(bb); b = APR_BUCKET_NEXT(b)) {
         if (APR_BUCKET_IS_EOS(b)) {
-            if (ctxt) {    /* done reading the file. run the transform now */
+            if (ctxt) {         /* done reading the file. run the transform now */
                 xmlParseChunk(ctxt, buf, 0, 1);
                 ret = transform_run(f, ctxt->myDoc);
                 xmlFreeParserCtxt(ctxt);
@@ -662,6 +760,8 @@ static void transform_hooks(apr_pool_t * p)
     ap_hook_post_read_request(init_notes, NULL, NULL, APR_HOOK_MIDDLE);
 
     ap_register_output_filter(XSLT_FILTER_NAME, transform_filter, NULL,
+                              AP_FTYPE_RESOURCE);
+    ap_register_output_filter(APACHEFS_FILTER_NAME, apachefs_filter, NULL,
                               AP_FTYPE_RESOURCE);
 
 };
