@@ -44,6 +44,11 @@
 
 module AP_MODULE_DECLARE_DATA transform_module;
 
+/* TransformOptions */
+#define NO_OPTIONS          (1 <<  0)
+#define XSL_MULTIPASS       (1 <<  1)
+#define XINCLUDES           (1 <<  2)
+
 /* BEGIN svr cfg / stylesheet cache section */
 typedef struct cached_xslt
 {
@@ -114,6 +119,9 @@ static void *create_server_cfg(apr_pool_t * p, server_rec * x)
 typedef struct dir_cfg
 {
     const char *xslt;
+    apr_int32_t opts;
+    apr_int32_t incremented_opts;
+    apr_int32_t decremented_opts;
 } dir_cfg;
 
 typedef struct
@@ -435,6 +443,7 @@ static apr_status_t update_relative_uri(ap_filter_t * f, xmlDocPtr doc)
 static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
 {
     size_t length;
+    int i;
     transform_output_ctx output_ctx;
     int stylesheet_is_cached = 0;
     xsltStylesheetPtr transform = NULL;
@@ -442,19 +451,24 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     xmlOutputBufferPtr output;
     modxml_notes *notes =
         ap_get_module_config(f->r->request_config, &transform_module);
+    dir_cfg *dconf = ap_get_module_config(f->r->per_dir_config,
+                                          &transform_module);
     svr_cfg *sconf = ap_get_module_config(f->r->server->module_config,
                                           &transform_module);
 
     if (!doc)
         return pass_failure(f, "XSLT: Couldn't parse document", notes);
+    if (dconf->opts & XINCLUDES) {
 #if LIBXML_VERSION >= 20603
-    // TODO: Add a Configuration Directive to enable/disable xincludes?
-    // TODO: Make an easy way to enable/disable Loading Files from the Network.
-    xsltSetXIncludeDefault(1);
-    //    xmlXIncludeProcessFlags(doc, XML_PARSE_RECOVER|XML_PARSE_XINCLUDE|XML_PARSE_NONET);
+        // TODO: Make an easy way to enable/disable Loading Files from the Network.
+        // TODO: xsltSetXIncludeDefault(1); ?
+        xmlXIncludeProcessFlags(doc,
+                                XML_PARSE_RECOVER | XML_PARSE_XINCLUDE |
+                                XML_PARSE_NONET);
 #else
-    xmlXIncludeProcess(doc);
+        xmlXIncludeProcess(doc);
 #endif
+    }
     if (notes->xslt) {
         if (transform = get_cached_xslt(sconf, notes->xslt), transform) {
             stylesheet_is_cached = 1;
@@ -479,7 +493,33 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
         // TODO: Need better error reporting here. What Went Wrong?
         return pass_failure(f, "XSLT: Couldn't run transform", notes);
     }
+
     if (transform->mediaType) {
+
+#define MAX_XSL_PASSES 25
+
+        if (dconf->opts & XSL_MULTIPASS) {
+            for (i = 0; i < MAX_XSL_PASSES
+                 && (strncmp(transform->mediaType, "application/xml", 15) ==
+                     0); i++) {
+                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
+                              "MultiPass XSLT #%d: MediaType:%s; charset=%s;",
+                              i, transform->mediaType, doc->encoding);
+
+                doc = result;
+                update_relative_uri(f, doc);
+
+                // TODO: Cache MultiPass XSLT Files
+                transform = xsltLoadStylesheetPI(doc);
+                if (!transform) {
+                    return pass_failure(f,
+                                        "XSLT: Couldn't load transform in multipass",
+                                        notes);
+                }
+                result = xsltApplyStylesheet(transform, doc, 0);
+            }
+        }
+
         // Note: If the XSLT We are using doesn't have an encoding, 
         //       We will use the server default.
         if (transform->encoding) {
@@ -516,6 +556,7 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
             ap_set_content_type(f->r, apr_pstrdup(f->r->pool, "text/html"));
         }
     }
+
     output_ctx.next = f->next;
     output_ctx.bb = apr_brigade_create(f->r->pool,
                                        apr_bucket_alloc_create(f->r->pool));
@@ -623,12 +664,60 @@ static void *xml_merge_dir_config(apr_pool_t * p, void *basev, void *addv)
 
     to->xslt = (merge->xslt != 0) ? merge->xslt : from->xslt;
 
+    /* This code comes from mod_autoindex's IndexOptions */
+    if (merge->opts & NO_OPTIONS) {
+        /*
+         * If the current directory says 'no options' then we also
+         * clear any incremental mods from being inheritable further down.
+         */
+        to->opts = NO_OPTIONS;
+        to->incremented_opts = 0;
+        to->decremented_opts = 0;
+    }
+    else {
+        /*
+         * If there were any nonincremental options selected for
+         * this directory, they dominate and we don't inherit *anything.*
+         * Contrariwise, we *do* inherit if the only settings here are
+         * incremental ones.
+         */
+        if (merge->opts == 0) {
+            to->incremented_opts = (from->incremented_opts
+                                    | merge->incremented_opts)
+                & ~merge->decremented_opts;
+            to->decremented_opts = (from->decremented_opts
+                                    | merge->decremented_opts);
+            /*
+             * We may have incremental settings, so make sure we don't
+             * inadvertently inherit an IndexOptions None from above.
+             */
+            to->opts = (from->opts & ~NO_OPTIONS);
+        }
+        else {
+            /*
+             * There are local nonincremental settings, which clear
+             * all inheritance from above.  They *are* the new base settings.
+             */
+            to->opts = merge->opts;;
+        }
+        /*
+         * We're guaranteed that there'll be no overlap between
+         * the add-options and the remove-options.
+         */
+        to->opts |= to->incremented_opts;
+        to->opts &= ~to->decremented_opts;
+    }
+
     return to;
 }
 
 static void *xml_create_dir_config(apr_pool_t * p, char *x)
 {
     dir_cfg *conf = apr_pcalloc(p, sizeof(dir_cfg));
+    // Enable XIncludes By Default (backwards compat..?)
+    conf->opts = 0 & XINCLUDES;
+    conf->incremented_opts = 0;
+    conf->decremented_opts = 0;
     return conf;
 }
 static const char *use_xslt(cmd_parms * cmd, void *cfg, const char *xslt)
@@ -651,6 +740,72 @@ static int init_notes(request_rec * r)
     return OK;
 }
 
+static const char *add_opts(cmd_parms * cmd, void *d, const char *optstr)
+{
+    char *w;
+    apr_int32_t opts;
+    apr_int32_t opts_add;
+    apr_int32_t opts_remove;
+    char action;
+    dir_cfg *d_cfg = (dir_cfg *) d;
+
+    opts = d_cfg->opts;
+    opts_add = d_cfg->incremented_opts;
+    opts_remove = d_cfg->decremented_opts;
+    while (optstr[0]) {
+        int option = 0;
+
+        w = ap_getword_conf(cmd->pool, &optstr);
+
+        if ((*w == '+') || (*w == '-')) {
+            action = *(w++);
+        }
+        else {
+            action = '\0';
+        }
+
+
+        if (!strcasecmp(w, "MultiPassXSL")) {
+            option = XSL_MULTIPASS;
+        }
+        else if (!strcasecmp(w, "XIncludes")) {
+            option = XINCLUDES;
+        }
+        else if (!strcasecmp(w, "None")) {
+            if (action != '\0') {
+                return "Cannot combine '+' or '-' with 'None' keyword";
+            }
+            opts = NO_OPTIONS;
+            opts_add = 0;
+            opts_remove = 0;
+        }
+        else {
+            return "Invalid TransformOption";
+        }
+
+        if (action == '\0') {
+            opts |= option;
+            opts_add = 0;
+            opts_remove = 0;
+        }
+        else if (action == '+') {
+            opts_add |= option;
+            opts_remove &= ~option;
+        }
+        else {
+            opts_remove |= option;
+            opts_add &= ~option;
+        }
+    }
+    if ((opts & NO_OPTIONS) && (opts & ~NO_OPTIONS)) {
+        return "Cannot combine other TransformOptions keywords with 'None'";
+    }
+    d_cfg->incremented_opts = opts_add;
+    d_cfg->decremented_opts = opts_remove;
+    d_cfg->opts = opts;
+    return NULL;
+}
+
 static const command_rec transform_cmds[] = {
 
     AP_INIT_TAKE1("TransformSet", use_xslt, NULL, OR_ALL,
@@ -658,6 +813,9 @@ static const command_rec transform_cmds[] = {
 
     AP_INIT_TAKE2("TransformCache", transform_cache_xslt, NULL, RSRC_CONF,
                   "URL and Path for stylesheet to preload"),
+
+    AP_INIT_RAW_ARGS("TransformOptions", add_opts, NULL, OR_INDEXES,
+                     "one or more index options [+|-][]"),
     {NULL}
 };
 
