@@ -1,7 +1,10 @@
-
-AC_INIT
+dnl Required initializer
+AC_INIT(mod_transform, 0.1.0)
+OOO_CONFIG_NICE(config.nice)
+AC_PREREQ(2.53)
 AC_CONFIG_SRCDIR([src/mod_transform.c])
 AM_MAINTAINER_MODE
+AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE(mod_transform, 0.1.0)
 AM_CONFIG_HEADER([include/mod_transform_config.h:config.in])
 
@@ -10,11 +13,16 @@ AC_PROG_LD
 AC_PROG_INSTALL
 AM_PROG_LIBTOOL
 
-CHECK_APACHE()
+AP_VERSION=2.0.40
+CHECK_APACHE(,$AP_VERSION,
+    :,:,
+    AC_MSG_ERROR([*** Apache version $AP_VERSION not found!])
+)
 
-AM_PATH_XSLT(1.1.0,
+AM_PATH_XSLT(1.0.22,
     ,
-    AC_MSG_ERROR([could not find libxslt]) )
+    AC_MSG_ERROR([could not find libxslt])
+)
 
 AC_PATH_PROG(PKG_CONFIG, pkg-config, no)
 if test "x$PKG_CONFIG" = "xno"; then
@@ -27,7 +35,6 @@ AC_SUBST(MODULE_CFLAGS)
 
 AC_CONFIG_FILES([Makefile src/Makefile])
 AC_OUTPUT
-OOO_CONFIG_NICE(config.nice)
 
 echo "---"
 echo "Configuration summary for mod_transform"
