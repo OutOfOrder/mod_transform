@@ -83,12 +83,10 @@ static const char *transform_cache_xslt(cmd_parms * cmd, void *cfg,
     xsltStylesheetPtr xslt = xsltParseStylesheetFile(path);
     if (url && path && xslt) {
         cached_xslt *me = apr_palloc(cmd->pool, sizeof(cached_xslt));
-//      cached_xslt* prev = conf->data ;
         me->id = apr_pstrdup(cmd->pool, url);
         me->transform = xslt;
         me->next = conf->data;
         conf->data = me;
-        //apr_hash_set(conf->hash, url, APR_HASH_KEY_STRING, xslt) ;
         ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, cmd->pool,
                       "Cached precompiled XSLT %s", url);
         return NULL;
@@ -241,7 +239,7 @@ static apr_status_t ex_apr_uri_resolve_relative(apr_pool_t * pool,
         size_t baselen;
         const char *basepath = base->path ? base->path : "/";
         const char *path = uptr->path;
-        const char *base_end = strrchr(basepath, '/');
+        const char *base_end = ap_strrchr_c(basepath, '/');
 
         /* if base is nonsensical, bail out */
         if (basepath[0] != '/') {
@@ -403,28 +401,23 @@ static xmlChar *ex_xsltParseStylesheetPI(const xmlChar * value)
 }
 
 
-static apr_status_t update_relative_uri(ap_filter_t * f, xmlDocPtr doc)
+static apr_status_t update_relative_uri(ap_filter_t * f, xmlDocPtr doc, xmlNodePtr child, const char* orig_href)
 {
-    xmlNodePtr child;
     apr_uri_t url;
     apr_uri_t base_url;
     const char *basedir;
-    char *href;
-    child = find_stylesheet_node(doc);
-    if (child != NULL) {
-        href = ex_xsltParseStylesheetPI(child->content);
+    char* href;
+    if (child != NULL && orig_href) {
 
         // TODO: This does NOT handle relative Paths. 
         //       We either need the patch from Nick to be applied to APR-Util,
         //       or we write our own parsing function.
         //   For Example: file://../xsl/fasd/foo.xsl
         //    url.path = "/xsl/fasd/foo.xsl" It SHOULD be "../xsl/fasd/foo.xsl"!
-        if (href && apr_uri_parse(f->r->pool, href, &url) == APR_SUCCESS) {
-            xmlFree(href);
-
+        if (apr_uri_parse(f->r->pool, orig_href, &url) == APR_SUCCESS) {
             // TODO: dirname() is not Win32 Portable.
             // TODO: Replace with custom dirname() like function. strrchr() is our friend.
-            basedir = dirname(f->r->filename);
+            basedir = dirname(apr_pstrdup(f->r->pool, f->r->filename));
             apr_uri_parse(f->r->pool,
                           apr_psprintf(f->r->pool, "file://%s/", basedir),
                           &base_url);
@@ -443,7 +436,6 @@ static apr_status_t update_relative_uri(ap_filter_t * f, xmlDocPtr doc)
 static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
 {
     size_t length;
-    int i;
     transform_output_ctx output_ctx;
     int stylesheet_is_cached = 0;
     xsltStylesheetPtr transform = NULL;
@@ -478,8 +470,19 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
         }
     }
     else {
-        update_relative_uri(f, doc);
-        transform = xsltLoadStylesheetPI(doc);
+        xmlNodePtr child;
+        char *href;
+        child = find_stylesheet_node(doc);
+        if (child != NULL) {
+            href = ex_xsltParseStylesheetPI(child->content);
+            if (transform = get_cached_xslt(sconf, href), transform) {
+                stylesheet_is_cached = 1;
+            }
+            else {
+                update_relative_uri(f, doc, child, href);
+                transform = xsltLoadStylesheetPI(doc);
+            }
+        }
     }
 
     if (!transform) {
@@ -495,31 +498,6 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     }
 
     if (transform->mediaType) {
-
-#define MAX_XSL_PASSES 25
-
-        if (dconf->opts & XSL_MULTIPASS) {
-            for (i = 0; i < MAX_XSL_PASSES
-                 && (strncmp(transform->mediaType, "application/xml", 15) ==
-                     0); i++) {
-                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
-                              "MultiPass XSLT #%d: MediaType:%s; charset=%s;",
-                              i, transform->mediaType, doc->encoding);
-
-                doc = result;
-                update_relative_uri(f, doc);
-
-                // TODO: Cache MultiPass XSLT Files
-                transform = xsltLoadStylesheetPI(doc);
-                if (!transform) {
-                    return pass_failure(f,
-                                        "XSLT: Couldn't load transform in multipass",
-                                        notes);
-                }
-                result = xsltApplyStylesheet(transform, doc, 0);
-            }
-        }
-
         // Note: If the XSLT We are using doesn't have an encoding, 
         //       We will use the server default.
         if (transform->encoding) {
@@ -555,6 +533,10 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
                           "Setting content-type as default to: text/html");
             ap_set_content_type(f->r, apr_pstrdup(f->r->pool, "text/html"));
         }
+    }
+    else {
+            ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, f->r,
+                          "mod_transform: Warning, no content type was set!");
     }
 
     output_ctx.next = f->next;
