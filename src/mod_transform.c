@@ -1,9 +1,10 @@
 /**
  *    Copyright (c) 2002, WebThing Ltd
- *    Author:    Nick Kew <nick@webthing.com>
- *
- *  Current state: pre-release; some parts work, but none of it
- *  is suitable for an operational server.  Subject to much change
+ *    Copyright (c) 2004 Edward Rudd
+ *    Copyright (c) 2004 Paul Querna
+ *    Authors:    Nick Kew <nick webthing.com>
+ *                Edward Rudd <eddie at omegaware dot com>
+ *                Paul Querna <chip at force-elite.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
