@@ -447,10 +447,12 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
         return pass_failure(f, "XSLT: Couldn't run transform", notes);
     }
     if (transform->mediaType) {
-        if (doc->charset) {
+        // Note: If the XSLT We are using doesn't have an encoding, 
+        //       We will use the server default.
+        if (transform->encoding) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r, 
-                "Setting content-type to: '%s; charset=%s'", transform->mediaType, xmlGetCharEncodingName(doc->charset));
-            ap_set_content_type(f->r, apr_psprintf(f->r->pool, "%s; charset=%s", transform->mediaType, xmlGetCharEncodingName(doc->charset)));
+                "Setting content-type to: '%s; charset=%s'", transform->mediaType, transform->encoding);
+            ap_set_content_type(f->r, apr_psprintf(f->r->pool, "%s; charset=%s", transform->mediaType, transform->encoding));
         }
         else {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r, 
