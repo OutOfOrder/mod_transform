@@ -522,6 +522,9 @@ static apr_status_t transform_filter(ap_filter_t * f,
     /* Check request notes to see any altered configuration */
     if (!ctxt) {
         const char *note;
+        /* unset content-length */
+        apr_table_unset(f->r->headers_out, "Content-Length");
+        
     /*    if (!f->r->content_type || (strncmp(f->r->content_type, "text/xml", 8) &&
                 strncmp(f->r->content_type, "application/xml", 15) &&
                 strncmp(f->r->content_type, "application/xhtml", 17) &&
