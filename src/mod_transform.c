@@ -155,6 +155,7 @@ static int closeCallback(void *context)
     APR_BRIGADE_INSERT_TAIL(octx->bb, b);
     return 0;
 }
+
 static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
 {
     size_t length;
@@ -215,6 +216,27 @@ static apr_status_t transform_filter(ap_filter_t * f,
     apr_size_t bytes = 0;
     xmlParserCtxtPtr ctxt = (xmlParserCtxtPtr) f->ctx;  // will be 0 first time
     apr_status_t ret = APR_SUCCESS;
+	const char *note;
+
+	/* Check request notes to see any altered configuration */
+	if (!ctxt) {
+		if (!f->r->content_type || (strncmp(f->r->content_type, "text/xml", 8) &&
+				strncmp(f->r->content_type, "application/xml", 15))) {
+			ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, f->r,
+						"Filter removed due to write content type: %s", f->r->content_type);
+			ap_remove_output_filter(f);
+			return ap_pass_brigade(f->next, bb);
+		}
+		note = apr_table_get(f->r->notes, "TRANSFORM_MODE");
+		if (note) {
+			if (!apr_strnatcasecmp(note, "off")) {
+				ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, f->r,
+							"Filter removed due to note");
+				ap_remove_output_filter(f);
+				return ap_pass_brigade(f->next, bb);
+			}
+		}
+	}
 
     if ((f->r->proto_num >= 1001) && !f->r->main && !f->r->prev)
         f->r->chunked = 1;
@@ -282,11 +304,11 @@ static int init_notes(request_rec * r)
 {
     dir_cfg *conf = ap_get_module_config(r->per_dir_config,
                                          &transform_module);
-    modxml_notes *notes = apr_palloc(r->pool, sizeof(modxml_notes));
+    modxml_notes *notes = apr_pcalloc(r->pool, sizeof(modxml_notes));
     notes->xslt = conf->xslt;
-    notes->document = 0;
+	
     ap_set_module_config(r->request_config, &transform_module, notes);
-    return 0;
+    return OK;
 }
 
 static const command_rec transform_cmds[] = {
