@@ -395,7 +395,7 @@ static apr_status_t update_relative_uri(ap_filter_t *f, xmlDocPtr doc) {
             // TODO: dirname() is not Win32 Portable.
             // TODO: Replace with custom dirname() like function. strrchr() is our friend.
             basedir = dirname(f->r->filename);
-            apr_uri_parse(f->r->pool, apr_psprintf(f->r->pool, "file://%s", basedir), &base_url);
+            apr_uri_parse(f->r->pool, apr_psprintf(f->r->pool, "file://%s/", basedir), &base_url);
             ex_apr_uri_resolve_relative(f->r->pool, &base_url, &url);
             href = apr_uri_unparse(f->r->pool, &url, 0);
             xmlNodeSetContent(child, apr_psprintf(f->r->pool,"type=\"text/xsl\" href=\"%s\"", href));
