@@ -114,6 +114,19 @@ typedef struct
 } modxml_notes;
 
 
+static void transform_error_cb(void *ctx, const char *msg, ...)
+{
+    va_list args;
+    char* fmsg;
+    ap_filter_t* f = (ap_filter_t*)ctx;
+    va_start(args, msg);
+    fmsg = apr_pvsprintf(f->r->pool,msg,args);
+    va_end(args);
+    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, f->r, fmsg);
+}
+
+
+
 static apr_status_t pass_failure(ap_filter_t * filter, const char *msg,
                                  modxml_notes * notes)
 {
@@ -133,6 +146,7 @@ static apr_status_t pass_failure(ap_filter_t * filter, const char *msg,
 #else
     ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, filter->r, msg);
 #endif
+    xmlSetGenericErrorFunc(NULL, NULL);
     return HTTP_INTERNAL_SERVER_ERROR;;
 }
 
@@ -492,7 +506,7 @@ static apr_status_t transform_filter(ap_filter_t * f,
     apr_size_t bytes = 0;
     xmlParserCtxtPtr ctxt = (xmlParserCtxtPtr) f->ctx;  // will be 0 first time
     apr_status_t ret = APR_SUCCESS;
-
+    xmlSetGenericErrorFunc((void*)f, transform_error_cb);
     /* Check request notes to see any altered configuration */
     if (!ctxt) {
         const char *note;
@@ -552,6 +566,7 @@ static apr_status_t transform_filter(ap_filter_t * f,
         }
     }
     apr_brigade_destroy(bb);
+    xmlSetGenericErrorFunc(NULL, NULL);
     return ret;
 }
 
