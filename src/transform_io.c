@@ -4,7 +4,7 @@
  *    Copyright (c) 2004 Paul Querna
  *    Authors:    Nick Kew <nick webthing.com>
  *                Edward Rudd <urkle at outoforder dot com>
- *                Paul Querna <chip at force-elite.com>
+ *                Paul Querna <chip at outoforder dot com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -55,11 +55,8 @@ int transform_xmlio_output_close(void *context)
 }
 
 /**
- * This Function is part of a patch to APR-Util: http://issues.apache.org/bugzilla/show_bug.cgi?id=28453
- * Even if it is commited to APR-Util, it will be one full release cycle before 
- * it shows up in the HTTPd Release. 
- * In addition it is doubtful that it will be in the 0.9 Branch, and therefore, 
- * we would have to wait untill 2.1 becomes 2.2. BAH. Sometimes I hate Apache/APR.
+ * This Function is part of a patch to APR-Util: 
+ *   http://issues.apache.org/bugzilla/show_bug.cgi?id=28453
  * Thanks to Nick Kew :)
  */
 /* Resolve relative to a base.  This means host/etc, and (crucially) path */
@@ -240,18 +237,9 @@ static xmlParserInputBufferPtr
     input_ctx->bb = NULL;
     input_ctx->f = f;
 
-    /*
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
-                      "mod_transform: Subrequest URI: '%s'", URI);
-    */
-
     input_ctx->rr = ap_sub_req_lookup_uri(URI, f->r, NULL);
 
     if (input_ctx->rr->status != HTTP_OK) {
-        /*
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: Subreq Lookup Failed: %d", input_ctx->rr->status);
-        */
         ap_destroy_sub_req(input_ctx->rr);
         apr_pool_destroy(subpool);
         return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
@@ -270,9 +258,6 @@ static xmlParserInputBufferPtr
         return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
                                                     enc);
     }
-
-    /* Update the mtime if a dependency of the Main Request has been updated */
-    ap_update_mtime(f->r, input_ctx->rr->mtime);
 
     ret = xmlAllocParserInputBuffer(enc);
 

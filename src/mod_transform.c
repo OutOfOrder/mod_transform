@@ -3,8 +3,8 @@
  *    Copyright (c) 2004 Edward Rudd
  *    Copyright (c) 2004 Paul Querna
  *    Authors:    Nick Kew <nick webthing.com>
- *                Edward Rudd <urkle at outoforder dot com>
- *                Paul Querna <chip at force-elite.com>
+ *                Edward Rudd <urkle outoforder dot com>
+ *                Paul Querna <chip outoforder dot com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -124,51 +124,37 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     }
 
     if (!transform) {
-        /* TODO: Need better error reporting here. Why couldn't we Load it? */
         xmlParserInputBufferCreateFilenameDefault(orig);
-        return pass_failure(f, "XSLT: Couldn't load transform", notes);
+        return pass_failure(f, "XSLT: Loading of the XSLT File has failed", notes);
     }
+
     result = xsltApplyStylesheet(transform, doc, 0);
     if (!result) {
         if (!stylesheet_is_cached) {
             xsltFreeStylesheet(transform);
         }
-        /* TODO: Need better error reporting here. What Went Wrong? */
         xmlParserInputBufferCreateFilenameDefault(orig);
-        return pass_failure(f, "XSLT: Couldn't run transform", notes);
+        return pass_failure(f, "XSLT: Apply Stylesheet has Failed.", notes);
     }
 
     if (transform->mediaType) {
-        /* Note: If the XSLT We are using doesn't have an encoding, 
-           We will use the server default. */
+        /**
+         * Note: If the XSLT We are using doesn't have an encoding, 
+         *       We will use the server default. 
+         */
         if (transform->encoding) {
-            /* 
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
-                          "Setting content-type to: '%s; charset=%s'",
-                          transform->mediaType, transform->encoding);
-            */
             ap_set_content_type(f->r,
                                 apr_psprintf(f->r->pool, "%s; charset=%s",
                                              transform->mediaType,
                                              transform->encoding));
         }
         else if (doc->encoding) {
-            /*
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
-                          "Setting content-type to: '%s; charset=%s'",
-                          transform->mediaType, doc->encoding);
-            */
             ap_set_content_type(f->r,
                                 apr_psprintf(f->r->pool, "%s; charset=%s",
                                              transform->mediaType,
                                              doc->encoding));
         }
         else {
-            /*
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
-                          "Setting content-type to: '%s'",
-                          transform->mediaType);
-            */
             ap_set_content_type(f->r,
                                 apr_pstrdup(f->r->pool,
                                             transform->mediaType));
@@ -176,10 +162,6 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     }
     else if (transform->method) {
         if (!strcmp(transform->method, "html")) {
-            /*
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
-                          "Setting content-type as default to: text/html");
-            */
             ap_set_content_type(f->r, apr_pstrdup(f->r->pool, "text/html"));
         }
     }
@@ -222,24 +204,10 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
 
     xmlSetGenericErrorFunc((void *) f, transform_error_cb);
 
-#if 0
-    /* For now, we do not handle subrequests, because libxml2 really makes it hard... */
-    if(!ap_is_initial_req(f->r)) {
-        ap_remove_output_filter(f);
-        return ap_pass_brigade(f->next, bb);
-    }
-#endif
-
     /* First Run of this Filter */
     if (!ctxt) {
         /* unset content-length */
         apr_table_unset(f->r->headers_out, "Content-Length");
-
-        /* TODO: Find a better way to determine if any resources needed to 
-           create this document have changed.
-           TODO: We can now hook the ApacheFS to get the file mtimes.....
-           apr_table_unset(f->r->headers_out, "Last-Modified"); 
-         */
     }
 
     if ((f->r->proto_num >= 1001) && !f->r->main && !f->r->prev)
@@ -261,9 +229,7 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
             }
             else {
                 f->ctx = ctxt = xmlCreatePushParserCtxt(0, 0, buf, bytes, 0);
-#if LIBXML_VERSION >= 20600
                 xmlCtxtUseOptions(ctxt, XML_PARSE_NOENT | XML_PARSE_NOCDATA);
-#endif
                 ctxt->directory = xmlParserGetDirectory(f->r->filename);
             }
         }
@@ -275,12 +241,7 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
     return ret;
 }
 
-/* -------------------------------------------------------------
-    Config command stuff
-   -------------------------------------------------------------
-*/
-
-static void *xml_merge_dir_config(apr_pool_t * p, void *basev, void *addv)
+static void *transform_merge_dir_config(apr_pool_t * p, void *basev, void *addv)
 {
     dir_cfg *from = basev;
     dir_cfg *merge = addv;
@@ -343,7 +304,7 @@ static void *create_server_cfg(apr_pool_t * p, server_rec * x)
     return cfg;
 }
 
-static void *xml_create_dir_config(apr_pool_t * p, char *x)
+static void *transform_create_dir_config(apr_pool_t * p, char *x)
 {
     dir_cfg *conf = apr_pcalloc(p, sizeof(dir_cfg));
     /* Enable XIncludes By Default (backwards compat..?) */
@@ -440,6 +401,7 @@ static const char *add_opts(cmd_parms * cmd, void *d, const char *optstr)
 
 static void transform_child_init(apr_pool_t *p, server_rec *s)
 {
+    /* Setup some global startup things for libxml2 and EXSLT */
     xmlInitParser();
     xmlInitThreads();
     exsltRegisterAll();
@@ -507,8 +469,8 @@ static const command_rec transform_cmds[] = {
 
 module AP_MODULE_DECLARE_DATA transform_module = {
     STANDARD20_MODULE_STUFF,
-    xml_create_dir_config,
-    xml_merge_dir_config,
+    transform_create_dir_config,
+    transform_merge_dir_config,
     create_server_cfg,
     NULL,
     transform_cmds,
@@ -516,6 +478,7 @@ module AP_MODULE_DECLARE_DATA transform_module = {
 };
 
 /* Exported Functions */
+
 void mod_transform_set_XSLT(request_rec * r, const char *name)
 {
     transform_notes *notes = ap_get_module_config(r->request_config,
