@@ -572,7 +572,9 @@ static apr_status_t transform_filter(ap_filter_t * f,
             }
             else if (bytes >= 4) {
                 f->ctx = ctxt = xmlCreatePushParserCtxt(0, 0, buf, bytes, 0);
+                #if LIBXML_VERSION >= 20603
                 xmlCtxtUseOptions(ctxt, XML_PARSE_NOENT | XML_PARSE_NOCDATA);
+                #endif
                 ctxt->directory = xmlParserGetDirectory(f->r->filename);
             }
         }
