@@ -7,6 +7,7 @@ config.guess
 config.in
 config.log
 config.status
+config.nice
 config.sub
 configure
 depcomp
