@@ -21,135 +21,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-
-#define XSLT_FILTER_NAME "XSLT"
-
-#define APACHEFS_FILTER_NAME "transform_store_brigade"
-
-#include "mod_transform.h"
-
-#include "http_config.h"
-#include "http_protocol.h"
-#include "http_core.h"
-#include "http_log.h"
-#include "http_request.h"
-#include "apr_buckets.h"
-#include "apr_strings.h"
-#include "apr_uri.h"
-#include "apr_tables.h"
-
-#include <libxml/globals.h>
-#include <libxml/threads.h>
-#include <libxml/xinclude.h>
-#include <libxml/xmlIO.h>
-#include <libxslt/xsltutils.h>
-#include <libxslt/transform.h>
-#include <libexslt/exslt.h>
-
-/* Did I mention auto*foo sucks? */
-#undef PACKAGE_NAME
-#undef PACKAGE_STRING
-#undef PACKAGE_TARNAME
-#undef PACKAGE_VERSION
-#include "mod_transform_config.h"
-
-
-module AP_MODULE_DECLARE_DATA transform_module;
-
-/* TransformOptions */
-#define NO_OPTIONS          (1 <<  0)
-#define USE_APACHE_FS       (1 <<  1)
-#define XINCLUDES           (1 <<  2)
-
-/* Static Style Sheet Caching */
-typedef struct transform_xslt_cache
-{
-    const char *id;
-    xsltStylesheetPtr transform;
-    struct transform_xslt_cache *next;
-}
-transform_xslt_cache;
-
-typedef struct svr_cfg
-{
-    transform_xslt_cache *data;
-}
-svr_cfg;
-
-static void *transform_get_cached(svr_cfg * sconf, const char *descriptor)
-{
-    transform_xslt_cache *p;
-    if (!descriptor)
-        return 0;
-
-    for (p = sconf->data; p; p = p->next) {
-        if (!strcmp(descriptor, p->id)) {
-            return p->transform;
-        }
-    }
-
-    return 0;
-}
-
-static const char *transform_add_xslt_cache(cmd_parms * cmd, void *cfg,
-                                            const char *url, const char *path)
-{
-    svr_cfg *conf = ap_get_module_config(cmd->server->module_config,
-                                         &transform_module);
-    xsltStylesheetPtr xslt = xsltParseStylesheetFile(path);
-    if (url && path && xslt) {
-        transform_xslt_cache *me =
-            apr_palloc(cmd->pool, sizeof(transform_xslt_cache));
-        me->id = apr_pstrdup(cmd->pool, url);
-        me->transform = xslt;
-        me->next = conf->data;
-        conf->data = me;
-        ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, cmd->pool,
-                      "mod_transform: Cached Precompiled XSL: %s", url);
-        return NULL;
-    }
-    else {
-        ap_log_perror(APLOG_MARK, APLOG_ERR, 0, cmd->pool,
-                      "mod_transform: Error fetching or compiling XSL from: %s",
-                      path);
-        return "Error trying to precompile XSLT";
-    }
-}
-
-static apr_status_t freeCache(void *conf)
-{
-    transform_xslt_cache *p;
-    svr_cfg *cfg = conf;
-    for (p = cfg->data; p; p = p->next) {
-        xsltFreeStylesheet(p->transform);
-    }
-    return APR_SUCCESS;
-}
-
-static void *create_server_cfg(apr_pool_t * p, server_rec * x)
-{
-    svr_cfg *cfg = apr_pcalloc(p, sizeof(svr_cfg));
-    apr_pool_cleanup_register(p, cfg, freeCache, apr_pool_cleanup_null);
-    return cfg;
-}
-
-
-typedef struct dir_cfg
-{
-    const char *xslt;
-    apr_int32_t opts;
-    apr_int32_t incremented_opts;
-    apr_int32_t decremented_opts;
-}
-dir_cfg;
-
-typedef struct
-{
-    const char *xslt;
-    xmlDocPtr document;
-}
-modxml_notes;
-
+#include "mod_transform_private.h"
 
 static void transform_error_cb(void *ctx, const char *msg, ...)
 {
@@ -164,301 +36,29 @@ static void transform_error_cb(void *ctx, const char *msg, ...)
 }
 
 static apr_status_t pass_failure(ap_filter_t * filter, const char *msg,
-                                 modxml_notes * notes)
+                                 transform_notes * notes)
 {
     ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, filter->r, "mod_transform: %s",
                   msg);
-    return HTTP_INTERNAL_SERVER_ERROR;;
+    return HTTP_INTERNAL_SERVER_ERROR;
 }
 
 
-typedef struct
+/* Search a docPtr for a xml-stylesheet PI. Return this Node. Null Otherwise. */
+static xmlNodePtr find_stylesheet_node(xmlDocPtr doc)
 {
-    ap_filter_t *next;
-    apr_bucket_brigade *bb;
-}
-transform_xmlio_output_ctx;
-
-static int transform_xmlio_output_write(void *context, const char *buffer,
-                                        int len)
-{
-    if (len > 0) {
-        transform_xmlio_output_ctx *octx =
-            (transform_xmlio_output_ctx *) context;
-        ap_fwrite(octx->next, octx->bb, buffer, len);
-    }
-    return len;
-}
-
-static int transform_xmlio_output_close(void *context)
-{
-    transform_xmlio_output_ctx *octx = (transform_xmlio_output_ctx *) context;
-    apr_bucket *b = apr_bucket_eos_create(octx->bb->bucket_alloc);
-    APR_BRIGADE_INSERT_TAIL(octx->bb, b);
-    return 0;
-}
-
-/**
- * This Function is part of a patch to APR-Util: http://issues.apache.org/bugzilla/show_bug.cgi?id=28453
- * Even if it is commited to APR-Util, it will be one full release cycle before 
- * it shows up in the HTTPd Release. 
- * In addition it is doubtful that it will be in the 0.9 Branch, and therefore, 
- * we would have to wait untill 2.1 becomes 2.2. BAH. Sometimes I hate Apache/APR.
- * Thanks to Nick Kew :)
- */
-/* Resolve relative to a base.  This means host/etc, and (crucially) path */
-static apr_status_t ex_apr_uri_resolve_relative(apr_pool_t * pool,
-                                                apr_uri_t * base,
-                                                apr_uri_t * uptr)
-{
-    if (uptr == NULL
-        || base == NULL || !base->is_initialized || !uptr->is_initialized) {
-        return APR_EGENERAL;
-    }
-    /* The interesting bit is the path.  */
-    if (uptr->path == NULL) {
-        if (uptr->hostname == NULL) {
-            /* is this compatible with is_initialised?  Harmless in any case */
-            uptr->path = base->path ? base->path : apr_pstrdup(pool, "/");
-        }
-        else {
-            /* deal with the idiosyncracy of APR allowing path==NULL
-             ** without risk of breaking back-compatibility
-             */
-            uptr->path = apr_pstrdup(pool, "/");
-        }
-    }
-    else if (uptr->path[0] != '/') {
-        size_t baselen;
-        const char *basepath = base->path ? base->path : "/";
-        const char *path = uptr->path;
-        const char *base_end = ap_strrchr_c(basepath, '/');
-
-        /* if base is nonsensical, bail out */
-        if (basepath[0] != '/') {
-            return APR_EGENERAL;
-        }
-        /* munch "up" components at the start, and chop them from base path */
-        while (!strncmp(path, "../", 3)) {
-            while (base_end > basepath) {
-                if (*--base_end == '/') {
-                    break;
-                }
+    xmlNodePtr child;
+    child = doc->children;
+    while ((child != NULL) && (child->type != XML_ELEMENT_NODE)) {
+        if ((child->type == XML_PI_NODE) && 
+            (xmlStrEqual(child->name, BAD_CAST "xml-stylesheet"))) {
+            if (child->content != NULL) {
+                return child;
             }
-            path += 3;
         }
-        /* munch "here" components at the start */
-        while (!strncmp(path, "./", 2)) {
-            path += 2;
-        }
-        baselen = base_end - basepath + 1;
-        uptr->path = apr_palloc(pool, baselen + strlen(path) + 1);
-        memcpy(uptr->path, basepath, baselen);
-        strcpy(uptr->path + baselen, path);
+        child = child->next;
     }
-
-    /* The trivial bits are everything-but-path */
-    if (uptr->scheme == NULL) {
-        uptr->scheme = base->scheme;
-    }
-    if (uptr->hostinfo == NULL) {
-        uptr->hostinfo = base->hostinfo;
-    }
-    if (uptr->user == NULL) {
-        uptr->user = base->user;
-    }
-    if (uptr->password == NULL) {
-        uptr->password = base->password;
-    }
-    if (uptr->hostname == NULL) {
-        uptr->hostname = base->hostname;
-    }
-    if (uptr->port_str == NULL) {
-        uptr->port_str = base->port_str;
-    }
-    if (uptr->hostent == NULL) {
-        uptr->hostent = base->hostent;
-    }
-    if (!uptr->port) {
-        uptr->port = base->port;
-    }
-    return APR_SUCCESS;
-}
-
-static const char *find_relative_uri(ap_filter_t * f, const char *orig_href)
-{
-    apr_uri_t url;
-    apr_uri_t base_url;
-    const char *basedir;
-    char *href;
-    if (orig_href) {
-        if (apr_uri_parse(f->r->pool, orig_href, &url) == APR_SUCCESS) {
-            basedir = ap_make_dirstr_parent(f->r->pool, f->r->filename);
-            apr_uri_parse(f->r->pool,
-                          apr_psprintf(f->r->pool, "file://%s", basedir),
-                          &base_url);
-            ex_apr_uri_resolve_relative(f->r->pool, &base_url, &url);
-            href = apr_uri_unparse(f->r->pool, &url, 0);
-            return href;
-        }
-    }
-    return orig_href;
-}
-
-typedef struct
-{
-    ap_filter_t *f;
-    apr_pool_t *p;
-    request_rec *rr;
-    apr_bucket_brigade *bb;
-}
-transform_xmlio_input_ctx;
-
-/* This is our custom hack filter for getting the contents of a file into a 
-   bucket brigade. No one else should ever use it! */
-static apr_status_t apachefs_filter(ap_filter_t * f, apr_bucket_brigade * bb)
-{
-    apr_status_t rv;
-    transform_xmlio_input_ctx *ctxt = f->ctx;
-    apr_bucket_brigade *data = ctxt->bb;
-    rv = ap_save_brigade(f, &data, &bb, f->r->pool);
-    ctxt->bb = data;
-    return rv;
-}
-
-
-static int transform_xmlio_input_read(void *context, char *buffer, int len)
-{
-    apr_status_t rv;
-    apr_size_t slen;
-    apr_bucket *e;
-    apr_bucket_brigade *newbb;
-    transform_xmlio_input_ctx *input_ctx = context;
-    slen = len;
-
-    if(!(input_ctx->bb)) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: Input Brigade was NULL.");
-        len = 0;
-        return -1;
-    }
-
-    rv = apr_brigade_flatten(input_ctx->bb, buffer, &slen);
-
-    if (rv != APR_SUCCESS) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: Unable to Flatten Brigade into xmlIO Buffer");
-        return -1;
-    }
-
-    rv = apr_brigade_partition(input_ctx->bb, slen, &e);
-    if (rv != APR_SUCCESS) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: Brigade Partition Failed!");
-        return -1;
-    }
-
-    newbb = apr_brigade_split(input_ctx->bb, e);
-
-    rv = apr_brigade_destroy(input_ctx->bb);
-    if (rv != APR_SUCCESS) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: Brigade Destroy Failed!");
-        return -1;
-    }
-
-    input_ctx->bb = newbb;
-    return slen;
-}
-
-static int transform_xmlio_input_close(void *context)
-{
-    transform_xmlio_input_ctx *input_ctx = context;
-    ap_destroy_sub_req(input_ctx->rr);
-    apr_pool_destroy(input_ctx->p);
-    return 0;
-}
-
-static xmlParserInputBufferPtr 
-    transform_input_from_subrequest(ap_filter_t *f, const char *URI, xmlCharEncoding enc)
-{
-    int rr_status;
-    xmlParserInputBufferPtr ret;
-    transform_xmlio_input_ctx *input_ctx;
-    /* TODO: This pool should be re-used for each file... */
-    apr_pool_t* subpool;
-
-    apr_pool_create(&subpool, f->r->pool);
-
-    input_ctx = apr_palloc(subpool, sizeof(input_ctx));
-    input_ctx->p = subpool;
-    input_ctx->bb = NULL;
-    input_ctx->f = f;
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
-                      "mod_transform: Subrequest URI: '%s'", URI);
-
-    input_ctx->rr = ap_sub_req_lookup_uri(URI, f->r, NULL);
-
-    if (input_ctx->rr->status != HTTP_OK) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: Subreq Lookup Failed: %d", input_ctx->rr->status);
-        ap_destroy_sub_req(input_ctx->rr);
-        apr_pool_destroy(subpool);
-        return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
-                                                    enc);
-    }
-
-    ap_add_output_filter(APACHEFS_FILTER_NAME,  input_ctx, input_ctx->rr, f->r->connection);
-
-    rr_status = ap_run_sub_req(input_ctx->rr);
-
-    if(rr_status != OK) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: HTTP Request Failed: %d", rr_status);
-        ap_destroy_sub_req(input_ctx->rr);
-        apr_pool_destroy(subpool);
-        return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
-                                                    enc);
-    }
-
-    ret = xmlAllocParserInputBuffer(enc);
-
-    if (ret != NULL) {
-        ret->context = input_ctx;
-        ret->readcallback = transform_xmlio_input_read;
-        ret->closecallback = transform_xmlio_input_close;
-    }
-    else {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: Failed to create ParserInputBuffer");
-        ap_destroy_sub_req(input_ctx->rr);
-        apr_pool_destroy(subpool);
-        return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
-                                                    enc);
-    }
-
-    return ret;
-}
-
-static xmlParserInputBufferPtr transform_get_input(const char *URI,
-                                                   xmlCharEncoding enc)
-{
-    ap_filter_t *f = (ap_filter_t *) xmlGenericErrorContext;
-    dir_cfg *dconf = ap_get_module_config(f->r->per_dir_config,
-                                          &transform_module);
-
-    if (URI == NULL)
-        return NULL;
-
-    if (dconf->opts & USE_APACHE_FS) {
-        /* We want to use an Apache based Fliesystem for Libxml. Let the fun begin. */
-        return transform_input_from_subrequest(f, URI, enc);
-    }
-    else {
-        /* TODO: Fixup Relative Paths here */
-        return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
-                                                    enc);
-    }
+    return NULL;
 }
 
 static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
@@ -466,45 +66,61 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     size_t length;
     transform_xmlio_output_ctx output_ctx;
     int stylesheet_is_cached = 0;
+    const char* xslt_uri;
     xsltStylesheetPtr transform = NULL;
     xmlDocPtr result = NULL;
+    xmlNodePtr pi_node;
     xmlOutputBufferPtr output;
     xmlParserInputBufferCreateFilenameFunc orig;
-    modxml_notes *notes =
+    transform_notes *notes =
         ap_get_module_config(f->r->request_config, &transform_module);
     dir_cfg *dconf = ap_get_module_config(f->r->per_dir_config,
                                           &transform_module);
     svr_cfg *sconf = ap_get_module_config(f->r->server->module_config,
                                           &transform_module);
 
-    if (!doc)
-        return pass_failure(f, "XSLT: Couldn't parse document", notes);
-
+    if (!doc) {
+        return pass_failure(f, "XSLT: Couldn't parse XML Document", notes);
+    }
 
     orig = xmlParserInputBufferCreateFilenameDefault(transform_get_input);
 
 
     if (dconf->opts & XINCLUDES) {
-#if LIBXML_VERSION >= 20603
-        /* TODO: Make an easy way to enable/disable Loading Files from the Network. */
-        /* TODO: xsltSetXIncludeDefault(1); ? */
         xmlXIncludeProcessFlags(doc,
                                 XML_PARSE_RECOVER | XML_PARSE_XINCLUDE |
                                 XML_PARSE_NONET);
-#else
-        xmlXIncludeProcess(doc);
-#endif
     }
+
     if (ap_is_initial_req(f->r) && notes->xslt) {
-        if (transform = transform_get_cached(sconf, notes->xslt), transform) {
+        if (transform = transform_cache_get(sconf, notes->xslt), transform) {
             stylesheet_is_cached = 1;
         }
         else {
             transform = xsltParseStylesheetFile(notes->xslt);
         }
     }
+    else if(dconf->xslt != NULL) {
+        if(transform = transform_cache_get(sconf, dconf->xslt), transform) {
+            stylesheet_is_cached = 1;
+        }
+        else {
+            transform = xsltParseStylesheetFile(dconf->xslt);
+        }
+    }
     else {
-        transform = xsltLoadStylesheetPI(doc);
+        pi_node = find_stylesheet_node(doc);
+        if(pi_node == NULL && dconf->default_xslt != NULL){
+            transform = xsltParseStylesheetFile(dconf->default_xslt);
+        }
+        else if(pi_node == NULL) {
+            /* no node was found, plus no default. */
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, f->r, "mod_transform: No PI and No Default XSLT.");
+            transform = NULL;
+        }
+        else {
+            transform = xsltLoadStylesheetPI(doc);        
+        }
     }
 
     if (!transform) {
@@ -597,11 +213,13 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
 
     xmlSetGenericErrorFunc((void *) f, transform_error_cb);
 
+#if 0
     /* For now, we do not handle subrequests, because libxml2 really makes it hard... */
-//    if(!ap_is_initial_req(f->r)) {
-//        ap_remove_output_filter(f);
-//        return ap_pass_brigade(f->next, bb);
-//    }
+    if(!ap_is_initial_req(f->r)) {
+        ap_remove_output_filter(f);
+        return ap_pass_brigade(f->next, bb);
+    }
+#endif
 
     /* First Run of this Filter */
     if (!ctxt) {
@@ -708,6 +326,13 @@ static void *xml_merge_dir_config(apr_pool_t * p, void *basev, void *addv)
     return to;
 }
 
+static void *create_server_cfg(apr_pool_t * p, server_rec * x)
+{
+    svr_cfg *cfg = apr_pcalloc(p, sizeof(svr_cfg));
+    apr_pool_cleanup_register(p, cfg, transform_cache_free, apr_pool_cleanup_null);
+    return cfg;
+}
+
 static void *xml_create_dir_config(apr_pool_t * p, char *x)
 {
     dir_cfg *conf = apr_pcalloc(p, sizeof(dir_cfg));
@@ -715,6 +340,7 @@ static void *xml_create_dir_config(apr_pool_t * p, char *x)
     conf->opts = 0 & XINCLUDES;
     conf->incremented_opts = 0;
     conf->decremented_opts = 0;
+    conf->xslt = NULL;
     return conf;
 }
 
@@ -729,7 +355,7 @@ static int init_notes(request_rec * r)
 {
     dir_cfg *conf = ap_get_module_config(r->per_dir_config,
                                          &transform_module);
-    modxml_notes *notes = apr_pcalloc(r->pool, sizeof(modxml_notes));
+    transform_notes *notes = apr_pcalloc(r->pool, sizeof(transform_notes));
     notes->xslt = conf->xslt;
 
     ap_set_module_config(r->request_config, &transform_module, notes);
@@ -817,7 +443,7 @@ static void transform_hooks(apr_pool_t * p)
 
     ap_register_output_filter(XSLT_FILTER_NAME, transform_filter, NULL,
                               AP_FTYPE_RESOURCE);
-    ap_register_output_filter(APACHEFS_FILTER_NAME, apachefs_filter, NULL,
+    ap_register_output_filter(APACHEFS_FILTER_NAME, transform_apachefs_filter, NULL,
                               AP_FTYPE_RESOURCE);
 
 };
@@ -827,7 +453,7 @@ static const command_rec transform_cmds[] = {
     AP_INIT_TAKE1("TransformSet", use_xslt, NULL, OR_ALL,
                   "Stylesheet to use"),
 
-    AP_INIT_TAKE2("TransformCache", transform_add_xslt_cache, NULL, RSRC_CONF,
+    AP_INIT_TAKE2("TransformCache", transform_cache_add, NULL, RSRC_CONF,
                   "URL and Path for stylesheet to preload"),
 
     AP_INIT_RAW_ARGS("TransformOptions", add_opts, NULL, OR_INDEXES,
@@ -848,14 +474,14 @@ module AP_MODULE_DECLARE_DATA transform_module = {
 /* Exported Functions */
 void mod_transform_set_XSLT(request_rec * r, const char *name)
 {
-    modxml_notes *notes = ap_get_module_config(r->request_config,
+    transform_notes *notes = ap_get_module_config(r->request_config,
                                                &transform_module);
     notes->xslt = apr_pstrdup(r->pool, name);
 }
 
 void mod_transform_XSLTDoc(request_rec * r, xmlDocPtr doc)
 {
-    modxml_notes *notes = ap_get_module_config(r->request_config,
+    transform_notes *notes = ap_get_module_config(r->request_config,
                                                &transform_module);
     notes->document = doc;
 }

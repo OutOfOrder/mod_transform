@@ -1,6 +1,6 @@
 CLEANFILES = .libs/libmod_transform *~
 
-libmod_transform_la_SOURCES = mod_transform.c
+libmod_transform_la_SOURCES = mod_transform.c transform_io.c transform_cache.c
 libmod_transform_la_CFLAGS = -Wall ${XSLT_CFLAGS} ${MODULE_CFLAGS}
 libmod_transform_la_LDFLAGS = ${XSLT_LIBS} -lexslt
 
