@@ -161,8 +161,8 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     size_t length;
     transform_output_ctx output_ctx;
     int stylesheet_is_cached = 0;
-    xsltStylesheetPtr transform = 0;
-    xmlDocPtr result = 0;
+    xsltStylesheetPtr transform = NULL;
+    xmlDocPtr result = NULL;
     xmlOutputBufferPtr output;
 
     modxml_notes *notes =
@@ -190,6 +190,11 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
             xsltFreeStylesheet(transform);
         return pass_failure(f, "XSLT: Couldn't run transform", notes);
     }
+    if (transform->mediaType) {
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r, 
+            "Setting content-type to: %s", transform->mediaType);
+        ap_set_content_type(f->r, transform->mediaType);
+    }
     output_ctx.next = f->next;
     output_ctx.bb = apr_brigade_create(f->r->pool,
                                        apr_bucket_alloc_create(f->r->pool));
@@ -216,17 +221,19 @@ static apr_status_t transform_filter(ap_filter_t * f,
     apr_size_t bytes = 0;
     xmlParserCtxtPtr ctxt = (xmlParserCtxtPtr) f->ctx;  // will be 0 first time
     apr_status_t ret = APR_SUCCESS;
-	const char *note;
 
 	/* Check request notes to see any altered configuration */
 	if (!ctxt) {
-		if (!f->r->content_type || (strncmp(f->r->content_type, "text/xml", 8) &&
-				strncmp(f->r->content_type, "application/xml", 15))) {
+        const char *note;
+	/*	if (!f->r->content_type || (strncmp(f->r->content_type, "text/xml", 8) &&
+				strncmp(f->r->content_type, "application/xml", 15) &&
+				strncmp(f->r->content_type, "application/xhtml", 17) &&
+                                strncmp(f->r->content_type, "text/html", 9))) {
 			ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, f->r,
 						"Filter removed due to write content type: %s", f->r->content_type);
 			ap_remove_output_filter(f);
 			return ap_pass_brigade(f->next, bb);
-		}
+		}*/
 		note = apr_table_get(f->r->notes, "TRANSFORM_MODE");
 		if (note) {
 			if (!apr_strnatcasecmp(note, "off")) {
