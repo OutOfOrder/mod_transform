@@ -1,4 +1,8 @@
+
 mod_transform - XSLT and XIncludes Output filter for Apache 2
+
+Homepage: 
+   http://www.outoforder.cc/projects/apache/mod_transform/
 
 Prerequisites:
    libxslt      >= 1.1.5   http://xmlsoft.org/XSLT/
@@ -6,15 +10,15 @@ Prerequisites:
    Apache HTTPd >= 2.0.40   http://httpd.apache.org/
 
 Building:
-  Run:
-    $ ./configure --with-apxs=/usr/sbin/apxs
-    $ make
-    $ make install
+   Run:
+      $ ./configure --with-apxs=/usr/sbin/apxs
+      $ make
+      $ make install
 
 Configuration:
-  Edit httpd.conf and add:
-    LoadModule transform_module modules/mod_transform.so
+   Edit httpd.conf and add:
+      LoadModule transform_module modules/mod_transform.so
 
-  Simple usage:
-    AddOutputFilter XSLT xml
-  To make all xml files be processed by this filter.
+   Simple usage:
+      AddOutputFilter XSLT xml
+   To make all xml files be processed by this filter.
