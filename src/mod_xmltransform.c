@@ -24,18 +24,12 @@
 #define XSLT_FILTER_NAME "XSLT"
 
 #include "mod_xmltransform.h"
+
 #include <libxslt/xsltInternals.h>
 #include <libxslt/transform.h>
 
-#include <http_request.h>
-#include <http_core.h>
-#include <ap_config.h>
-#include <httpd.h>
-#include <http_config.h>
-#include <apr_buckets.h>
-#include <apr_strings.h>
-#include <http_protocol.h>
-#include <http_log.h>
+#include "apr_buckets.h"
+#include "apr_strings.h"
 
 module AP_MODULE_DECLARE_DATA xmltransform_module;
 
