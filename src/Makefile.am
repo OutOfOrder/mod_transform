@@ -6,7 +6,7 @@ libmod_transform_la_LDFLAGS = ${XSLT_LIBS} -lexslt
 
 lib_LTLIBRARIES = libmod_transform.la 
 
-make_so:
+make_so: ${lib_LTLIBRARIES}
 	@if test ! -L mod_transform.so ; then ln -s .libs/libmod_transform.so mod_transform.so ; fi
 
 clean:

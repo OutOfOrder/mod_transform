@@ -321,8 +321,6 @@ static apr_status_t apachefs_filter(ap_filter_t * f, apr_bucket_brigade * bb)
     apr_status_t rv;
     transform_xmlio_input_ctx *ctxt = f->ctx;
     apr_bucket_brigade *data = ctxt->bb;
-    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, f->r,
-                      "mod_transform: Saving Brigade!");
     rv = ap_save_brigade(f, &data, &bb, f->r->pool);
     ctxt->bb = data;
     return rv;
@@ -345,13 +343,7 @@ static int transform_xmlio_input_read(void *context, char *buffer, int len)
         return -1;
     }
 
-    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: input_read: want %d", len);
-
     rv = apr_brigade_flatten(input_ctx->bb, buffer, &slen);
-
-    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: input_read: got %d", slen);
 
     if (rv != APR_SUCCESS) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
@@ -382,8 +374,6 @@ static int transform_xmlio_input_read(void *context, char *buffer, int len)
 static int transform_xmlio_input_close(void *context)
 {
     transform_xmlio_input_ctx *input_ctx = context;
-    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: input_close: Done With Subrequest");
     ap_destroy_sub_req(input_ctx->rr);
     apr_pool_destroy(input_ctx->p);
     return 0;
@@ -409,27 +399,18 @@ static xmlParserInputBufferPtr
 
     input_ctx->rr = ap_sub_req_lookup_uri(URI, f->r, NULL);
 
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
-                      "mod_transform: Lookup Complete '%d'", input_ctx->rr->status);
-
     if (input_ctx->rr->status != HTTP_OK) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: HTTP Lookup Failed: %d", input_ctx->rr->status);
+                      "mod_transform: Subreq Lookup Failed: %d", input_ctx->rr->status);
         ap_destroy_sub_req(input_ctx->rr);
         apr_pool_destroy(subpool);
         return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
                                                     enc);
     }
 
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
-                      "mod_transform: Adding output Filter");
     ap_add_output_filter(APACHEFS_FILTER_NAME,  input_ctx, input_ctx->rr, f->r->connection);
 
-    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: Running Sub Request");
     rr_status = ap_run_sub_req(input_ctx->rr);
-    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: Sub Request Done");
 
     if(rr_status != OK) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
@@ -443,8 +424,6 @@ static xmlParserInputBufferPtr
     ret = xmlAllocParserInputBuffer(enc);
 
     if (ret != NULL) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
-                      "mod_transform: HTTP Request Success. Using ParserInputBuffer. %d", rr_status);
         ret->context = input_ctx;
         ret->readcallback = transform_xmlio_input_read;
         ret->closecallback = transform_xmlio_input_close;
@@ -501,7 +480,9 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     if (!doc)
         return pass_failure(f, "XSLT: Couldn't parse document", notes);
 
+
     orig = xmlParserInputBufferCreateFilenameDefault(transform_get_input);
+
 
     if (dconf->opts & XINCLUDES) {
 #if LIBXML_VERSION >= 20603
@@ -514,7 +495,7 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
         xmlXIncludeProcess(doc);
 #endif
     }
-    if (notes->xslt) {
+    if (ap_is_initial_req(f->r) && notes->xslt) {
         if (transform = transform_get_cached(sconf, notes->xslt), transform) {
             stylesheet_is_cached = 1;
         }
@@ -615,6 +596,12 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
     xmlGenericErrorFunc orig_error_func = xmlGenericError;
 
     xmlSetGenericErrorFunc((void *) f, transform_error_cb);
+
+    /* For now, we do not handle subrequests, because libxml2 really makes it hard... */
+//    if(!ap_is_initial_req(f->r)) {
+//        ap_remove_output_filter(f);
+//        return ap_pass_brigade(f->next, bb);
+//    }
 
     /* First Run of this Filter */
     if (!ctxt) {
@@ -817,8 +804,9 @@ static const char *add_opts(cmd_parms * cmd, void *d, const char *optstr)
 
 static void transform_child_init(apr_pool_t *p, server_rec *s)
 {
-  xmlInitParser();
-  exsltRegisterAll();
+    xmlInitParser();
+    xmlInitThreads();
+    exsltRegisterAll();
 }
 
 static void transform_hooks(apr_pool_t * p)
