@@ -55,7 +55,7 @@
 #undef PACKAGE_VERSION
 #include "mod_transform_config.h"
 
-module AP_MODULE_DECLARE_DATA transform_module;
+extern module AP_MODULE_DECLARE_DATA transform_module;
 
 /* TransformOptions */
 #define NO_OPTIONS          (1 <<  0)
