@@ -4,6 +4,7 @@ EXTRA_DIST = m4/libxslt.m4 \
 	m4/apache_test.m4 \
 	m4/outoforder.m4 \
 	include/mod_transform.h \
+	include/mod_transform_private.h \
 	TODO \
 	README
 
