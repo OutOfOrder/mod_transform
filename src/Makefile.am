@@ -1,8 +1,8 @@
 CLEANFILES = .libs/libmod_xmltransform *~
 
 libmod_xmltransform_la_SOURCES = mod_xmltransform.c
-libmod_xmltransform_la_CFLAGS = -Wall ${XML_CFLAGS}
-libmod_xmltransform_la_LDFLAGS = ${XML_LDFLAGS}
+libmod_xmltransform_la_CFLAGS = -Wall ${XSLT_CFLAGS}
+libmod_xmltransform_la_LDFLAGS = ${XSLT_LIBS}
 
 lib_LTLIBRARIES = libmod_xmltransform.la 
 

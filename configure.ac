@@ -81,7 +81,7 @@ AP_INCLUDES="-I`${APXS} -q INCLUDEDIR`"
 AC_MSG_RESULT($AP_INCLUDES)
 
 AM_PATH_XSLT(1.1.0,
-    "",
+    ,
     AC_MSG_ERROR([could not find libxslt]) )
 
 CFLAGS="${CFLAGS} $AP_INCLUDES"

@@ -25,9 +25,6 @@
 
 #include "mod_xmltransform.h"
 
-#include <libxslt/xsltInternals.h>
-#include <libxslt/transform.h>
-
 #include "apr_buckets.h"
 #include "apr_strings.h"
 
@@ -59,12 +56,12 @@ static void *get_cached_xslt(svr_cfg * sconf, const char *descriptor)
     return 0;                   //apr_hash_get(sconf->hash, descriptor, APR_HASH_KEY_STRING) ;
 }
 
-static const char *gnome_cache_xslt(cmd_parms * cmd, void *cfg,
+static const char *xmltransform_cache_xslt(cmd_parms * cmd, void *cfg,
                                     const char *url, const char *path)
 {
     svr_cfg *conf =
         ap_get_module_config(cmd->server->module_config,
-                             &xml_gnome_xslt_module);
+                             &xmltransform_module);
     xsltStylesheetPtr xslt = xsltParseStylesheetFile(path);
     if (url && path && xslt) {
         cached_xslt *me = apr_palloc(cmd->pool, sizeof(cached_xslt));
@@ -92,7 +89,7 @@ static apr_status_t freeCache(void *conf)
         xsltFreeStylesheet(p->transform);
     return APR_SUCCESS;
 }
-static void *cr_svr_cfg(apr_pool_t * p, server_rec * x)
+static void *create_server_cfg(apr_pool_t * p, server_rec * x)
 {
     svr_cfg *cfg = apr_pcalloc(p, sizeof(svr_cfg));
     apr_pool_cleanup_register(p, cfg, freeCache, apr_pool_cleanup_null);
@@ -141,36 +138,36 @@ typedef struct
 {
     ap_filter_t *next;
     apr_bucket_brigade *bb;
-} gnome_output_ctx;
+} xmltransform_output_ctx;
 
 static int writeCallback(void *context, const char *buffer, int len)
 {
     if (len > 0) {
-        gnome_output_ctx *octx = (gnome_output_ctx *) context;
+        xmltransform_output_ctx *octx = (xmltransform_output_ctx *) context;
         ap_fwrite(octx->next, octx->bb, buffer, len);
     }
     return len;
 }
 static int closeCallback(void *context)
 {
-    gnome_output_ctx *octx = (gnome_output_ctx *) context;
+    xmltransform_output_ctx *octx = (xmltransform_output_ctx *) context;
     apr_bucket *b = apr_bucket_eos_create(octx->bb->bucket_alloc);
     APR_BRIGADE_INSERT_TAIL(octx->bb, b);
     return 0;
 }
-static apr_status_t gnome_xslt_run(ap_filter_t * f, xmlDocPtr doc)
+static apr_status_t xmltransform_run(ap_filter_t * f, xmlDocPtr doc)
 {
     size_t length;
-    gnome_output_ctx output_ctx;
+    xmltransform_output_ctx output_ctx;
     int stylesheet_is_cached = 0;
     xsltStylesheetPtr transform = 0;
     xmlDocPtr result = 0;
     xmlOutputBufferPtr output;
 
     modxml_notes *notes =
-        ap_get_module_config(f->r->request_config, &xml_gnome_xslt_module);
+        ap_get_module_config(f->r->request_config, &xmltransform_module);
     svr_cfg *sconf = ap_get_module_config(f->r->server->module_config,
-                                          &xml_gnome_xslt_module);
+                                          &xmltransform_module);
 
     if (!doc)
         return pass_failure(f, "XSLT: Couldn't parse document", notes);
@@ -210,7 +207,7 @@ static apr_status_t gnome_xslt_run(ap_filter_t * f, xmlDocPtr doc)
     return APR_SUCCESS;
 }
 
-static apr_status_t gnome_xslt_filter(ap_filter_t * f,
+static apr_status_t xmltransform_filter(ap_filter_t * f,
                                       apr_bucket_brigade * bb)
 {
     apr_bucket *b;
@@ -227,14 +224,14 @@ static apr_status_t gnome_xslt_filter(ap_filter_t * f,
         if (APR_BUCKET_IS_EOS(b)) {
             if (ctxt) {         /* got input the normal way */
                 xmlParseChunk(ctxt, buf, 0, 1);
-                ret = gnome_xslt_run(f, ctxt->myDoc);
+                ret = xmltransform_run(f, ctxt->myDoc);
                 xmlFreeParserCtxt(ctxt);
             }
             else {              /* someone passed us an in-memory doctree */
                 modxml_notes *notes =
                     ap_get_module_config(f->r->request_config,
-                                         &xml_gnome_xslt_module);
-                ret = gnome_xslt_run(f, notes->document);
+                                         &xmltransform_module);
+                ret = xmltransform_run(f, notes->document);
                 if (notes->document)
                     xmlFreeDoc(notes->document);
             }
@@ -284,25 +281,25 @@ static const char *use_xslt(cmd_parms * cmd, void *cfg, const char *xslt)
 static int init_notes(request_rec * r)
 {
     dir_cfg *conf = ap_get_module_config(r->per_dir_config,
-                                         &xml_gnome_xslt_module);
+                                         &xmltransform_module);
     modxml_notes *notes = apr_palloc(r->pool, sizeof(modxml_notes));
     notes->xslt = conf->xslt;
     notes->document = 0;
-    ap_set_module_config(r->request_config, &xml_gnome_xslt_module, notes);
+    ap_set_module_config(r->request_config, &xmltransform_module, notes);
     return 0;
 }
 
-static const command_rec gnome_xslt_cmds[] = {
+static const command_rec xmltransform_cmds[] = {
 
-    AP_INIT_TAKE1("modxmlGnomeXSLTSet", use_xslt, NULL, OR_ALL,
+    AP_INIT_TAKE1("XMLTransformSet", use_xslt, NULL, OR_ALL,
                   "Stylesheet to use"),
 
-    AP_INIT_TAKE2("modxmlGnomeXSLTCache", gnome_cache_xslt, NULL, RSRC_CONF,
+    AP_INIT_TAKE2("XMLTransformCache", xmltransform_cache_xslt, NULL, RSRC_CONF,
                   "URL and Path for stylesheet to preload"),
     {NULL}
 };
 
-static void gnome_xslt_hooks(apr_pool_t * p)
+static void xmltransform_hooks(apr_pool_t * p)
 {
     ap_hook_post_read_request(init_notes, NULL, NULL, APR_HOOK_MIDDLE);
 
@@ -311,27 +308,27 @@ static void gnome_xslt_hooks(apr_pool_t * p)
 
 };
 
-module AP_MODULE_DECLARE_DATA xml_gnome_xslt_module = {
+module AP_MODULE_DECLARE_DATA xmltransform_module = {
     STANDARD20_MODULE_STUFF,
     xml_create_dir_config,
     xml_merge_dir_config,
-    cr_svr_cfg,
+    create_server_cfg,
     NULL,
-    gnome_xslt_cmds,
-    gnome_xslt_hooks
+    xmltransform_cmds,
+    xmltransform_hooks
 };
 
 /* Exported Functions */
 void mod_xmltransform_set_XSLT(request_rec * r, const char *name)
 {
     modxml_notes *notes = ap_get_module_config(r->request_config,
-                                               &xml_gnome_xslt_module);
+                                               &xmltransform_module);
     notes->xslt = apr_pstrdup(r->pool, name);
 }
 
 void mod_xmltransform_XSLTDoc(request_rec * r, xmlDocPtr doc)
 {
     modxml_notes *notes = ap_get_module_config(r->request_config,
-                                               &xml_gnome_xslt_module);
+                                               &xmltransform_module);
     notes->document = doc;
 }
