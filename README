@@ -2,6 +2,7 @@ mod_transform - XSLT and XIncludes Output filter for Apache 2
 
 Prerequisites:
    libxslt      >= 1.0.22   http://xmlsoft.org/XSLT/
+   libxml       >= 2.5.11   http://xmlsoft.org/
    Apache HTTPd >= 2.0.40   http://httpd.apache.org/
 
 Building:
