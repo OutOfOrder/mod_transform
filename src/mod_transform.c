@@ -295,15 +295,6 @@ static const char *find_relative_uri(ap_filter_t * f, const char *orig_href)
     return orig_href;
 }
 
-/* This is our custom hack filter for getting the contents of a file into a 
-   bucket brigade. No one else should ever use it! */
-static apr_status_t apachefs_filter(ap_filter_t * f, apr_bucket_brigade * bb)
-{
-    apr_bucket_brigade *data = f->ctx;
-    APR_BRIGADE_CONCAT(data, bb);
-    return APR_SUCCESS;
-}
-
 typedef struct
 {
     ap_filter_t *f;
@@ -312,6 +303,21 @@ typedef struct
     apr_bucket_brigade *bb;
 }
 transform_xmlio_input_ctx;
+
+/* This is our custom hack filter for getting the contents of a file into a 
+   bucket brigade. No one else should ever use it! */
+static apr_status_t apachefs_filter(ap_filter_t * f, apr_bucket_brigade * bb)
+{
+    apr_status_t rv;
+    transform_xmlio_input_ctx *ctxt = f->ctx;
+    apr_bucket_brigade *data = ctxt->bb;
+    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, f->r,
+                      "mod_transform: Saving Brigade!");
+    rv = ap_save_brigade(f, &data, &bb, f->r->pool);
+    ctxt->bb = data;
+    return rv;
+}
+
 
 static int transform_xmlio_input_read(void *context, char *buffer, int len)
 {
@@ -322,7 +328,20 @@ static int transform_xmlio_input_read(void *context, char *buffer, int len)
     transform_xmlio_input_ctx *input_ctx = context;
     slen = len;
 
+    if(!(input_ctx->bb)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: Input Brigade was NULL.");
+        len = 0;
+        return -1;
+    }
+
+    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: input_read: want %d", len);
+
     rv = apr_brigade_flatten(input_ctx->bb, buffer, &slen);
+
+    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: input_read: got %d", slen);
 
     if (rv != APR_SUCCESS) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
@@ -353,6 +372,8 @@ static int transform_xmlio_input_read(void *context, char *buffer, int len)
 static int transform_xmlio_input_close(void *context)
 {
     transform_xmlio_input_ctx *input_ctx = context;
+    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: input_close: Done With Subrequest");
     ap_destroy_sub_req(input_ctx->rr);
     apr_pool_destroy(input_ctx->p);
     return 0;
@@ -366,39 +387,65 @@ static xmlParserInputBufferPtr
     transform_xmlio_input_ctx *input_ctx;
     /* TODO: This pool should be re-used for each file... */
     apr_pool_t* subpool;
-    ap_filter_t cf;
 
     apr_pool_create(&subpool, f->r->pool);
 
     input_ctx = apr_palloc(subpool, sizeof(input_ctx));
     input_ctx->p = subpool;
-    input_ctx->bb = apr_brigade_create(subpool, f->c->bucket_alloc);
+    input_ctx->bb = NULL;
     input_ctx->f = f;
-    cf.frec = ap_get_output_filter_handle(APACHEFS_FILTER_NAME);
-    cf.next = NULL;
-    cf.ctx = input_ctx->bb;
-    cf.r = f->r;
-    cf.c = f->c;
-    input_ctx->rr = ap_sub_req_lookup_uri(URI, f->r, &cf);
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
+                      "mod_transform: Subrequest URI: '%s'", URI);
+
+    input_ctx->rr = ap_sub_req_lookup_uri(URI, f->r, NULL);
+
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
+                      "mod_transform: Lookup Complete '%d'", input_ctx->rr->status);
+
     if (input_ctx->rr->status != HTTP_OK) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: HTTP Lookup Failed: %d", input_ctx->rr->status);
         ap_destroy_sub_req(input_ctx->rr);
         apr_pool_destroy(subpool);
         return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
                                                     enc);
     }
 
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
+                      "mod_transform: Adding output Filter");
+    ap_add_output_filter(APACHEFS_FILTER_NAME,  input_ctx, input_ctx->rr, f->r->connection);
+
+    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: Running Sub Request");
     rr_status = ap_run_sub_req(input_ctx->rr);
+    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: Sub Request Done");
+
+    if(rr_status != OK) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: HTTP Request Failed: %d", rr_status);
+        ap_destroy_sub_req(input_ctx->rr);
+        apr_pool_destroy(subpool);
+        return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
+                                                    enc);
+    }
 
     ret = xmlAllocParserInputBuffer(enc);
 
     if (ret != NULL) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: HTTP Request Success. Using ParserInputBuffer. %d", rr_status);
         ret->context = input_ctx;
         ret->readcallback = transform_xmlio_input_read;
         ret->closecallback = transform_xmlio_input_close;
     }
     else {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, input_ctx->f->r,
+                      "mod_transform: Failed to create ParserInputBuffer");
         ap_destroy_sub_req(input_ctx->rr);
         apr_pool_destroy(subpool);
+        return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
+                                                    enc);
     }
 
     return ret;
@@ -413,9 +460,6 @@ static xmlParserInputBufferPtr transform_get_input(const char *URI,
 
     if (URI == NULL)
         return NULL;
-
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
-                      "mod_transform: Read URI: %s", URI);
 
     if (dconf->opts & USE_APACHE_FS) {
         /* We want to use an Apache based Fliesystem for Libxml. Let the fun begin. */
@@ -557,6 +601,9 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
     apr_size_t bytes = 0;
     xmlParserCtxtPtr ctxt = (xmlParserCtxtPtr) f->ctx;
     apr_status_t ret = APR_SUCCESS;
+    void *orig_error_cb = xmlGenericErrorContext;
+    xmlGenericErrorFunc orig_error_func = xmlGenericError;
+
     xmlSetGenericErrorFunc((void *) f, transform_error_cb);
 
     /* First Run of this Filter */
@@ -597,7 +644,9 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
         }
     }
     apr_brigade_destroy(bb);
-    xmlSetGenericErrorFunc(NULL, NULL);
+
+    xmlSetGenericErrorFunc(orig_error_cb,  orig_error_func);
+
     return ret;
 }
 
