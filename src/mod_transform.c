@@ -422,6 +422,10 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     if (!doc)
         return pass_failure(f, "XSLT: Couldn't parse document", notes);
 
+    // TODO: Add a Configuration Directive to enable/disable xincludes?
+    // TODO: Make an easy way to enable/disable Loading Files from the Network.
+    xmlXIncludeProcessFlags(doc, XML_PARSE_RECOVER|XML_PARSE_XINCLUDE|XML_PARSE_NONET);
+
     if (notes->xslt) {
         if (transform = get_cached_xslt(sconf, notes->xslt), transform) {
             stylesheet_is_cached = 1;

@@ -8,6 +8,7 @@
 #include "http_log.h"
 #include "apr_tables.h"
 #include <libxml/tree.h>
+#include <libxml/xinclude.h>
 #include <libxslt/xslt.h>
 #include <libxslt/xsltutils.h>
 #include <libxslt/transform.h>
