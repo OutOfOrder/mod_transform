@@ -13,15 +13,15 @@ AC_PROG_LD
 AC_PROG_INSTALL
 AM_PROG_LIBTOOL
 
+AM_PATH_XSLT(1.0.22,
+    ,
+    AC_MSG_ERROR([could not find libxslt])
+)
+
 AP_VERSION=2.0.40
 CHECK_APACHE(,$AP_VERSION,
     :,:,
     AC_MSG_ERROR([*** Apache version $AP_VERSION not found!])
-)
-
-AM_PATH_XSLT(1.0.22,
-    ,
-    AC_MSG_ERROR([could not find libxslt])
 )
 
 AC_PATH_PROG(PKG_CONFIG, pkg-config, no)
