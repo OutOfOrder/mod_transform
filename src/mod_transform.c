@@ -66,7 +66,6 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     size_t length;
     transform_xmlio_output_ctx output_ctx;
     int stylesheet_is_cached = 0;
-    const char* xslt_uri;
     xsltStylesheetPtr transform = NULL;
     xmlDocPtr result = NULL;
     xmlNodePtr pi_node;
@@ -115,7 +114,8 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
         }
         else if(pi_node == NULL) {
             /* no node was found, plus no default. */
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, f->r, "mod_transform: No PI and No Default XSLT.");
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, f->r, 
+                          "mod_transform: XSL not named in XML and No Default XSLT set");
             transform = NULL;
         }
         else {
@@ -130,8 +130,9 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     }
     result = xsltApplyStylesheet(transform, doc, 0);
     if (!result) {
-        if (!stylesheet_is_cached)
+        if (!stylesheet_is_cached) {
             xsltFreeStylesheet(transform);
+        }
         /* TODO: Need better error reporting here. What Went Wrong? */
         xmlParserInputBufferCreateFilenameDefault(orig);
         return pass_failure(f, "XSLT: Couldn't run transform", notes);
