@@ -16,4 +16,6 @@ ltmain.sh
 missing
 mkinstalldirs
 stamp-h.in
-
+mod_transform.pws
+.tm_project.cache
+mod_transform.prj.bak
