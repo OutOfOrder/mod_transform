@@ -300,12 +300,14 @@ static const char *find_relative_uri(ap_filter_t * f, const char *orig_href)
 static apr_status_t apachefs_filter(ap_filter_t * f, apr_bucket_brigade * bb)
 {
     apr_bucket_brigade *data = f->ctx;
-    return ap_save_brigade(f, &data, &bb, f->r->pool);
+    APR_BRIGADE_CONCAT(data, bb);
+    return APR_SUCCESS;
 }
 
 typedef struct
 {
     ap_filter_t *f;
+    apr_pool_t *p;
     request_rec *rr;
     apr_bucket_brigade *bb;
 }
@@ -352,31 +354,37 @@ static int transform_xmlio_input_close(void *context)
 {
     transform_xmlio_input_ctx *input_ctx = context;
     ap_destroy_sub_req(input_ctx->rr);
+    apr_pool_destroy(input_ctx->p);
     return 0;
 }
 
-static xmlParserInputBufferPtr transform_input_from_subrequest(ap_filter_t *
-                                                               f,
-                                                               const char
-                                                               *URI,
-                                                               xmlCharEncoding
-                                                               enc)
+static xmlParserInputBufferPtr 
+    transform_input_from_subrequest(ap_filter_t *f, const char *URI, xmlCharEncoding enc)
 {
     int rr_status;
     xmlParserInputBufferPtr ret;
     transform_xmlio_input_ctx *input_ctx;
+    /* TODO: This pool should be re-used for each file... */
+    apr_pool_t* subpool;
     ap_filter_t cf;
 
-    input_ctx = apr_palloc(f->r->pool, sizeof(input_ctx));
+    apr_pool_create(&subpool, f->r->pool);
+
+    input_ctx = apr_palloc(subpool, sizeof(input_ctx));
+    input_ctx->p = subpool;
+    input_ctx->bb = apr_brigade_create(subpool, f->c->bucket_alloc);
+    input_ctx->f = f;
     cf.frec = ap_get_output_filter_handle(APACHEFS_FILTER_NAME);
     cf.next = NULL;
     cf.ctx = input_ctx->bb;
     cf.r = f->r;
-    cf.c = NULL;
+    cf.c = f->c;
     input_ctx->rr = ap_sub_req_lookup_uri(URI, f->r, &cf);
     if (input_ctx->rr->status != HTTP_OK) {
         ap_destroy_sub_req(input_ctx->rr);
-        return NULL;
+        apr_pool_destroy(subpool);
+        return __xmlParserInputBufferCreateFilename(find_relative_uri(f, URI),
+                                                    enc);
     }
 
     rr_status = ap_run_sub_req(input_ctx->rr);
@@ -384,11 +392,13 @@ static xmlParserInputBufferPtr transform_input_from_subrequest(ap_filter_t *
     ret = xmlAllocParserInputBuffer(enc);
 
     if (ret != NULL) {
-        input_ctx = apr_palloc(f->r->pool, sizeof(input_ctx));
-        input_ctx->f = f;
         ret->context = input_ctx;
         ret->readcallback = transform_xmlio_input_read;
         ret->closecallback = transform_xmlio_input_close;
+    }
+    else {
+        ap_destroy_sub_req(input_ctx->rr);
+        apr_pool_destroy(subpool);
     }
 
     return ret;
@@ -403,6 +413,9 @@ static xmlParserInputBufferPtr transform_get_input(const char *URI,
 
     if (URI == NULL)
         return NULL;
+
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
+                      "mod_transform: Read URI: %s", URI);
 
     if (dconf->opts & USE_APACHE_FS) {
         /* We want to use an Apache based Fliesystem for Libxml. Let the fun begin. */
