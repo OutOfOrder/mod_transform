@@ -38,10 +38,21 @@
 #include "apr_uri.h"
 #include "apr_tables.h"
 
+#include <libxml/globals.h>
+#include <libxml/threads.h>
 #include <libxml/xinclude.h>
 #include <libxml/xmlIO.h>
 #include <libxslt/xsltutils.h>
 #include <libxslt/transform.h>
+#include <libexslt/exslt.h>
+
+/* Did I mention auto*foo sucks? */
+#undef PACKAGE_NAME
+#undef PACKAGE_STRING
+#undef PACKAGE_TARNAME
+#undef PACKAGE_VERSION
+#include "mod_transform_config.h"
+
 
 module AP_MODULE_DECLARE_DATA transform_module;
 
@@ -157,7 +168,6 @@ static apr_status_t pass_failure(ap_filter_t * filter, const char *msg,
 {
     ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, filter->r, "mod_transform: %s",
                   msg);
-    xmlSetGenericErrorFunc(NULL, NULL);
     return HTTP_INTERNAL_SERVER_ERROR;;
 }
 
@@ -285,7 +295,7 @@ static const char *find_relative_uri(ap_filter_t * f, const char *orig_href)
         if (apr_uri_parse(f->r->pool, orig_href, &url) == APR_SUCCESS) {
             basedir = ap_make_dirstr_parent(f->r->pool, f->r->filename);
             apr_uri_parse(f->r->pool,
-                          apr_psprintf(f->r->pool, "file://%s/", basedir),
+                          apr_psprintf(f->r->pool, "file://%s", basedir),
                           &base_url);
             ex_apr_uri_resolve_relative(f->r->pool, &base_url, &url);
             href = apr_uri_unparse(f->r->pool, &url, 0);
@@ -613,6 +623,7 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
 
         /* TODO: Find a better way to determine if any resources needed to 
            create this document have changed.
+           TODO: We can now hook the ApacheFS to get the file mtimes.....
            apr_table_unset(f->r->headers_out, "Last-Modified"); 
          */
     }
@@ -804,6 +815,25 @@ static const char *add_opts(cmd_parms * cmd, void *d, const char *optstr)
     return NULL;
 }
 
+static void transform_child_init(apr_pool_t *p, server_rec *s)
+{
+  xmlInitParser();
+  exsltRegisterAll();
+}
+
+static void transform_hooks(apr_pool_t * p)
+{
+    ap_hook_child_init(transform_child_init, NULL, NULL, APR_HOOK_MIDDLE);
+
+    ap_hook_post_read_request(init_notes, NULL, NULL, APR_HOOK_MIDDLE);
+
+    ap_register_output_filter(XSLT_FILTER_NAME, transform_filter, NULL,
+                              AP_FTYPE_RESOURCE);
+    ap_register_output_filter(APACHEFS_FILTER_NAME, apachefs_filter, NULL,
+                              AP_FTYPE_RESOURCE);
+
+};
+
 static const command_rec transform_cmds[] = {
 
     AP_INIT_TAKE1("TransformSet", use_xslt, NULL, OR_ALL,
@@ -815,17 +845,6 @@ static const command_rec transform_cmds[] = {
     AP_INIT_RAW_ARGS("TransformOptions", add_opts, NULL, OR_INDEXES,
                      "one or more index options [+|-][]"),
     {NULL}
-};
-
-static void transform_hooks(apr_pool_t * p)
-{
-    ap_hook_post_read_request(init_notes, NULL, NULL, APR_HOOK_MIDDLE);
-
-    ap_register_output_filter(XSLT_FILTER_NAME, transform_filter, NULL,
-                              AP_FTYPE_RESOURCE);
-    ap_register_output_filter(APACHEFS_FILTER_NAME, apachefs_filter, NULL,
-                              AP_FTYPE_RESOURCE);
-
 };
 
 module AP_MODULE_DECLARE_DATA transform_module = {
