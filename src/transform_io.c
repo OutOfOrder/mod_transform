@@ -24,7 +24,10 @@
 
 
 #include "mod_transform.h"
+#define HAVE_MOD_DEPENDS 0
+#if HAVE_MOD_DEPENDS
 #include "mod_depends.h"
+#endif
 #include "mod_transform_private.h"
 
 static apr_status_t io_pass_failure(ap_filter_t * filter, const char *msg,
@@ -153,7 +156,9 @@ static const char *find_relative_uri(ap_filter_t * f, const char *orig_href)
                           &base_url);
             ex_apr_uri_resolve_relative(f->r->pool, &base_url, &url);
             href = apr_uri_unparse(f->r->pool, &url, 0);
+#if HAVE_MOD_DEPENDS
             depends_add_file(f->r, url.path);
+#endif
             return href;
         }
     }
@@ -250,7 +255,9 @@ static xmlParserInputBufferPtr
 
     ap_add_output_filter(APACHEFS_FILTER_NAME,  input_ctx, input_ctx->rr, f->r->connection);
 
+#if HAVE_MOD_DEPENDS
     depends_add_file(f->r, input_ctx->rr->filename);
+#endif
     rr_status = ap_run_sub_req(input_ctx->rr);
 
     if(rr_status != OK) {
@@ -299,7 +306,9 @@ xmlParserInputBufferPtr transform_get_input(const char *URI,
     if (dconf->opts & USE_APACHE_FS) {
         /* We want to use an Apache based Fliesystem for Libxml. Let the fun begin. */
         if(strncmp(URI,"file:///etc/xml/catalog", sizeof("file:///etc/xml/catalog")) == 0){
+#if HAVE_MOD_DEPENDS
             depends_add_file(f->r, "/etc/xml/catalog");
+#endif
             return __xmlParserInputBufferCreateFilename(URI, enc);
         }
         else {
