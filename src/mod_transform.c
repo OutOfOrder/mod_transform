@@ -21,6 +21,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+#include "mod_depends.h"
 #include "mod_transform_private.h"
 
 static void transform_error_cb(void *ctx, const char *msg, ...)
@@ -208,6 +209,9 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
     if (!ctxt) {
         /* unset content-length */
         apr_table_unset(f->r->headers_out, "Content-Length");
+        if (f->r->filename) {
+            depends_add_file(f->r, f->r->filename);
+        }
     }
 
     if ((f->r->proto_num >= 1001) && !f->r->main && !f->r->prev)
