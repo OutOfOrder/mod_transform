@@ -23,6 +23,8 @@
 
 #include "mod_depends.h"
 #include "mod_transform_private.h"
+#include <libxslt/extensions.h>
+#include <libxml/xpathInternals.h>
 
 static void transform_error_cb(void *ctx, const char *msg, ...)
 {
@@ -62,6 +64,66 @@ static xmlNodePtr find_stylesheet_node(xmlDocPtr doc)
     return NULL;
 }
 
+static void transformApacheGetFunction (xmlXPathParserContextPtr ctxt, int nargs)
+{
+    if (nargs != 1) {
+        xmlXPathSetArityError(ctxt);
+        return;
+    }
+
+    if (ctxt->context->userData) {
+        xmlChar *variable;
+        request_rec *r = ctxt->context->userData;
+        variable = xmlXPathPopString(ctxt);
+        if (r->args) {
+            char found = 0;
+            char *key;
+            char *value;
+            char *query_string;
+            char *strtok_state;
+       
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, ctxt->context->userData,
+                "Requesting Get Aarg: %s",variable);
+
+            query_string = apr_pstrdup(r->pool, r->args);
+
+		    key = apr_strtok(query_string, "&", &strtok_state);
+		    while (key) {
+		        value = strchr(key, '=');
+		        if (value) {
+		            *value = '\0';      /* Split the string in two */
+		            value++;            /* Skip passed the = */
+		        }
+		        else {
+		            value = "1";
+		        }
+		        ap_unescape_url(key);
+                // Is this the parameter we want?
+                if (apr_strnatcmp(variable,key)==0) {
+                    ap_unescape_url(value);
+                    xmlXPathReturnString(ctxt, xmlStrdup((xmlChar *)value));
+                    found = 1;
+                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
+                        "Found query arg: %s = %s", key, value);
+                    break;
+                } else {
+    		        key = apr_strtok(NULL, "&", &strtok_state);
+                }
+		    }
+            if (!found) {
+                xmlXPathReturnEmptyString(ctxt);
+            }
+        } else { // No query
+            xmlXPathReturnEmptyString(ctxt);
+        }
+        if (variable) {
+            xmlFree(variable);
+        }
+    } else { // no request_rec bail
+        xmlXPathSetError(ctxt, XPATH_INVALID_CTXT);
+    }
+}
+
 static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
 {
     size_t length;
@@ -72,6 +134,8 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     xmlNodePtr pi_node;
     xmlOutputBufferPtr output;
     xmlParserInputBufferCreateFilenameFunc orig;
+    xsltTransformContextPtr tcontext;
+    
     transform_notes *notes =
         ap_get_module_config(f->r->request_config, &transform_module);
     dir_cfg *dconf = ap_get_module_config(f->r->per_dir_config,
@@ -129,7 +193,21 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
         return pass_failure(f, "XSLT: Loading of the XSLT File has failed", notes);
     }
 
-    result = xsltApplyStylesheet(transform, doc, 0);
+    // create a new transform context
+    tcontext = xsltNewTransformContext (transform, doc);
+    // Allow XPath functions to have access to request_rec
+    tcontext->xpathCtxt->userData = (void *)f->r;
+
+    /*if (dconf->opts & GETVARS) {
+    	getvars = parse_querystring(f->r);
+    } else {
+    	getvars = NULL;
+    }*/
+
+    result = xsltApplyStylesheetUser(transform, doc, NULL, NULL, NULL, tcontext);
+    // free the transform context
+	xsltFreeTransformContext(tcontext);
+
     if (!result) {
         if (!stylesheet_is_cached) {
             xsltFreeStylesheet(transform);
@@ -368,6 +446,9 @@ static const char *add_opts(cmd_parms * cmd, void *d, const char *optstr)
         else if (!strcasecmp(w, "XIncludes")) {
             option = XINCLUDES;
         }
+        else if (!strcasecmp(w, "GetVars")) {
+            option = GETVARS;
+        }
         else if (!strcasecmp(w, "None")) {
             if (action != '\0') {
                 return "Cannot combine '+' or '-' with 'None' keyword";
@@ -409,6 +490,10 @@ static void transform_child_init(apr_pool_t *p, server_rec *s)
     xmlInitParser();
     xmlInitThreads();
     exsltRegisterAll();
+    // Register mod_transform XSLT functions
+    xsltRegisterExtModuleFunction ((const xmlChar *) "get",
+                    TRANSFORM_APACHE_NAMESPACE,
+                    transformApacheGetFunction);
 }
 
 static const char *set_announce(cmd_parms *cmd, 
@@ -420,7 +505,7 @@ static const char *set_announce(cmd_parms *cmd,
 
     const char *err = ap_check_cmd_context(cmd,NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
     if (err) {
-	return err;
+        return err;
     }
     cfg->announce = arg ? 1 : 0;
 
@@ -435,7 +520,7 @@ static int transform_post_config(apr_pool_t *p, apr_pool_t *log, apr_pool_t *pte
 
     /* Add version string to Apache headers */
     if (cfg->announce) {
-	ap_add_version_component(p, PACKAGE_NAME"/"PACKAGE_VERSION);
+        ap_add_version_component(p, PACKAGE_NAME"/"PACKAGE_VERSION);
     }
     return OK;
 }
