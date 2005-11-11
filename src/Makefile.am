@@ -1,5 +1,5 @@
 mod_transform_la_SOURCES = mod_transform.c transform_io.c transform_cache.c
-mod_transform_la_CFLAGS = -Wall ${XSLT_CFLAGS} ${MODULE_CFLAGS}
+mod_transform_la_CFLAGS = -Wall -I${top_srcdir}/include ${XSLT_CFLAGS} ${MODULE_CFLAGS}
 mod_transform_la_LDFLAGS =  -rpath ${AP_LIBEXECDIR} -module -avoid-version ${XSLT_LIBS} -lexslt
 
 mod_LTLIBRARIES = mod_transform.la 

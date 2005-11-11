@@ -446,9 +446,6 @@ static const char *add_opts(cmd_parms * cmd, void *d, const char *optstr)
         else if (!strcasecmp(w, "XIncludes")) {
             option = XINCLUDES;
         }
-        else if (!strcasecmp(w, "GetVars")) {
-            option = GETVARS;
-        }
         else if (!strcasecmp(w, "None")) {
             if (action != '\0') {
                 return "Cannot combine '+' or '-' with 'None' keyword";
