@@ -304,7 +304,7 @@ xmlParserInputBufferPtr transform_get_input(const char *URI,
         return NULL;
 
     if (dconf->opts & USE_APACHE_FS) {
-        /* We want to use an Apache based Fliesystem for Libxml. Let the fun begin. */
+        /* We want to use an Apache based Filesystem for Libxml. Let the fun begin. */
         if(strncmp(URI,"file:///etc/xml/catalog", sizeof("file:///etc/xml/catalog")) == 0){
 #if HAVE_MOD_DEPENDS
             depends_add_file(f->r, "/etc/xml/catalog");
