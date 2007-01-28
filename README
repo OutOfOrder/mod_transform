@@ -5,9 +5,10 @@ Homepage:
    http://www.outoforder.cc/projects/apache/mod_transform/
 
 Prerequisites:
-   libxslt      >= 1.1.5   http://xmlsoft.org/XSLT/
+   libxslt      >= 1.1.5    http://xmlsoft.org/XSLT/
    libxml       >= 2.6.11   http://xmlsoft.org/
    Apache HTTPd >= 2.0.40   http://httpd.apache.org/
+   mod_depends  >= 0.6.0    http://www.outoforder.cc/
 
 Building:
    Run:
