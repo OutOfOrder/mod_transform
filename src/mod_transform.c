@@ -80,6 +80,10 @@ static void transformApacheGetFunction (xmlXPathParserContextPtr ctxt, int nargs
         xmlChar *variable;
         request_rec *r = ctxt->context->userData;
         variable = xmlXPathPopString(ctxt);
+
+        ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r,
+            "mod_transform: Warning, Using deprecated XPath HTTP get() function! Fix your XSLT!");
+
         if (r->args) {
             char found = 0;
             char *key;
@@ -87,8 +91,7 @@ static void transformApacheGetFunction (xmlXPathParserContextPtr ctxt, int nargs
             char *query_string;
             char *strtok_state;
        
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, ctxt->context->userData,
-                "Requesting Get Aarg: %s",variable);
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Requesting Get Aarg: %s", variable);
 
             query_string = apr_pstrdup(r->pool, r->args);
 
