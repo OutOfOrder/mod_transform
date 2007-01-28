@@ -23,3 +23,9 @@ Configuration:
    Simple usage:
       AddOutputFilter XSLT xml
    To make all xml files be processed by this filter.
+
+   Use the following to load the http plugin:
+     TransformLoadPlugin http
+
+  General plugin loading syntax:
+     TransformLoadPlugin PLUGIN_NAME [ARG1 ...]]

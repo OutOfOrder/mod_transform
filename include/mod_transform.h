@@ -2,6 +2,7 @@
  *    Copyright (c) 2002, WebThing Ltd
  *    Copyright (c) 2004 Edward Rudd
  *    Copyright (c) 2004 Paul Querna
+ *    Copyright (c) 2007 Christian Parpart
  *    Authors:    Nick Kew <nick webthing.com>
  *                Edward Rudd <eddie at omegaware dot com>
  *                Paul Querna <chip at force-elite.com>

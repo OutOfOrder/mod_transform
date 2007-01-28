@@ -2,6 +2,7 @@
  *    Copyright (c) 2002 WebThing Ltd
  *    Copyright (c) 2004 Edward Rudd
  *    Copyright (c) 2004 Paul Querna
+ *    Copyright (c) 2007 Christian Parpart
  *    Authors:    Nick Kew <nick webthing.com>
  *                Edward Rudd <urkle outoforder dot com>
  *                Paul Querna <chip outoforder dot com>
