@@ -157,7 +157,6 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
 
     orig = xmlParserInputBufferCreateFilenameDefault(transform_get_input);
 
-
     if (dconf->opts & XINCLUDES) {
         xmlXIncludeProcessFlags(doc,
                                 XML_PARSE_RECOVER | XML_PARSE_XINCLUDE |
@@ -634,7 +633,7 @@ static const char *transform_load_plugin(cmd_parms *cmd, void *cfg, const char *
         return errorMsg;
     }
 
-    rv = apr_dso_sym((apr_dso_handle_sym_t *)&pluginInfo->plugin, pluginInfo->handle, pluginRecord);
+    rv = apr_dso_sym((apr_dso_handle_sym_t *)pluginInfo->plugin, pluginInfo->handle, pluginRecord);
     if (rv != 0)
         return apr_psprintf(cmd->pool, "mod_transform: %s: Cannot find symbol: %s", pluginFileName, pluginRecord);
 
