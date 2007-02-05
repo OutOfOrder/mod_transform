@@ -10,7 +10,7 @@ plugin_LTLIBRARIES = http.la
 
 http_la_SOURCES = http.c
 http_la_CFLAGS = ${mod_transform_la_CFLAGS} ${AP_CFLAGS} ${APREQ2_CFLAGS}
-http_la_LDFLAGS = -module -export-dynamic -avoid-version -no-undefined ${APREQ2_LDFLAGS}
+http_la_LDFLAGS = -module -export-dynamic -avoid-version -no-undefined ${APREQ2_LDFLAGS} ${APREQ2_LIBS}
 
 install: install-am
 	rm -f $(DESTDIR)${moddir}/mod_transform.a
