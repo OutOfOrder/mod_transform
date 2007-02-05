@@ -1,3 +1,5 @@
+AM_CFLAGS = -Wall
+
 moddir=${AP_LIBEXECDIR}
 mod_LTLIBRARIES = mod_transform.la 
 
