@@ -604,10 +604,15 @@ static const char *transform_load_plugin(cmd_parms *cmd, void *cfg, const char *
 {
     int argc;
     const char **argv = build_args(cmd->pool, raw_args, &argc);
+
     svr_cfg *sconf = ap_get_module_config(cmd->server->module_config, &transform_module);
+
     transform_plugin_info_t *pluginInfo = apr_pcalloc(cmd->pool, sizeof(transform_plugin_info_t));
+    apr_dso_handle_sym_t pluginSym = NULL;
+
     char *pluginFileName = apr_psprintf(cmd->pool, "%s/%s/%s.so", DEFAULT_EXP_LIBEXECDIR, PACKAGE_NAME, argv[0]);
     char *pluginRecord = apr_psprintf(cmd->pool, "%s_plugin", argv[0]);
+
     char *p;
 
     pluginInfo->name = argv[0];
@@ -624,18 +629,21 @@ static const char *transform_load_plugin(cmd_parms *cmd, void *cfg, const char *
         pluginRecord = apr_psprintf(cmd->pool, "_%s", pluginRecord);
 
     apr_status_t rv = apr_dso_load(&pluginInfo->handle, pluginFileName, cmd->pool);
-
     if (rv != 0) {
-        static char errorMsg[1024];
+        static char errorMsg[256];
 
-        apr_dso_error(pluginInfo->handle, errorMsg, sizeof(errorMsg));
-
-        return errorMsg;
+        return apr_dso_error(pluginInfo->handle, errorMsg, sizeof(errorMsg));
     }
 
-    rv = apr_dso_sym((apr_dso_handle_sym_t *)pluginInfo->plugin, pluginInfo->handle, pluginRecord);
-    if (rv != 0)
-        return apr_psprintf(cmd->pool, "mod_transform: %s: Cannot find symbol: %s", pluginFileName, pluginRecord);
+    rv = apr_dso_sym(&pluginSym, pluginInfo->handle, pluginRecord);
+    if (rv != 0) {
+        char errbuf[256];
+
+        return apr_psprintf(cmd->pool, "mod_transform: %s: Cannot find symbol: %s: %s", 
+            pluginFileName, pluginRecord, apr_dso_error(pluginInfo->handle, errbuf, sizeof(errbuf)));
+    }
+
+    pluginInfo->plugin = pluginSym;
 
     if (pluginInfo->plugin->plugin_init != NULL)
         if ((*pluginInfo->plugin->plugin_init)(cmd->pool, pluginInfo->argc, pluginInfo->argv) != APR_SUCCESS)
