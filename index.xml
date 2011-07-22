@@ -1,0 +1,131 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="../../../../xsl/projects.xsl"?>
+<ooo title="mod_transform" path="/projects/apache/mod_transform/" osi="on">
+ <section title="Abstract">
+    <content>
+     <div xmlns="http://www.w3.org/1999/xhtml">
+       <code>mod_transform</code> is a filter module that allows Apache 2.0 to do dynamic
+       XSL Transformations on either static XML documents, or XML documents generated
+       from another Apache module or CGI program.
+       <br/><br/>
+       This module originated from 
+       <code>mod_xml_gnome_xslt</code> by <a href="http://apache.webthing.com/">Web&#222;ing</a>. 
+     </div>
+    </content>
+ </section>
+
+ <section title="Demo">
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml">
+        <a href="/">This Website!</a> - This entire website is built around XML Datafiles transformed by XSLT to produce standards compliant XHTML 1.1.
+      </div>
+    </content>
+ </section>
+
+ <section title="Documentation">
+    <content>
+     <div xmlns="http://www.w3.org/1999/xhtml">
+        <a href="docs">mod_transform documentation</a><br/><br/>
+        <a href="/presentations/">ApacheCon US 2004 Slides</a><br/><br/>
+     </div>
+    </content>
+ </section>
+
+ <requirements>
+  <title>Prerequisites</title>
+  <software name="libxml2" url="http://www.xmlsoft.org/">
+    <requirement version="2.6.11" type="minimum"/>
+  </software>
+  <software name="libxslt" url="http://www.xmlsoft.org/XSLT/">
+    <requirement version="1.1.5" type="minimum"/>
+  </software>
+  <software name="Apache HTTPd" url="http://httpd.apache.org/">
+    <requirement version="2.0.40" type="minimum"/>
+  </software>
+ </requirements>
+
+ <changelog>
+  <entry version="0.6.0" fdate="2004-10-18T12:00:00-05:00">
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml">
+        0.6.0 is a major feature release.  Changes in this version include:
+        <ul>
+          <li>Relative Paths can now be used from XInclude and XSLT. <a href="http://bugs.outoforder.cc/view.php?id=2">PR #2</a>.</li>
+          <li>New Directive: <a href="docs/#TransformAnnounce">TransformAnnounce</a></li>
+          <li>New Directive: <a href="docs/#TransformOptions">TransformOptions</a></li>
+          <li>ApacheFS: All file access by <code>libXML2</code> can now be overlayed onto 
+              the Apache Document Root. This provides compatibility with how 
+              <a href="http://axkit.org/">Apache AxKit</a> operates.</li>
+          <li><a href="http://www.exslt.org/">EXSLT</a> is now enabled.</li>
+          <li>Mac OS X: Fix build and <code>make install</code>.</li>
+          <li>General code cleanup and organization.</li>
+        </ul>
+      </div>
+    </content>
+  </entry>
+  <entry version="0.4.1" date="2453179">
+    <content type="docbook">
+      <para>
+        Minor bug release that fixes issues where certain proxies 
+        that use http/1.0 do not send the send the entire content to the client.
+      </para>
+      <para>
+      <ulink url="http://bugs.outoforder.cc/bug_view_page.php?bug_id=0000008">More info</ulink>
+      </para>
+    </content>
+  </entry>
+  <entry version="0.4.0" date="2453155">
+    <content type="docbook">
+      <para>
+        Initial Release
+      </para>
+    </content>
+  </entry>
+ </changelog>
+
+ <downloads
+        name="mod_transform"
+        baseref="/downloads/mod_transform/"
+        extension="tar.gz">
+    <category branch="stable" latest="0.6.0">
+      <download version="0.6.0" md5sum="8b27adea2536f105470b4bedc418ab3b"/>
+      <download version="0.4.1" md5sum="5b400a81abc92ffa6eacd18bae9f4a48"/>
+      <download version="0.4.0" md5sum="a41ea16eeefb9b798186153b154a1219"/>
+    </category>
+    <category>
+      <title>Repositories</title>
+      <repository type="svn" name="mod_transform" baseref="http://svn.outoforder.cc/" view="chora"/>
+    </category>
+ </downloads>
+
+ <mailinglists spam="warning">
+    <content type="docbook">
+      <para>
+        There are two mailing lists for mod_transform. The first is the generic
+        announcement mailing list which provides announcements for all software releases
+        on OutOfOrder.cc, but can be filtered by choosing topics in the mailing list
+        options page. The second is the user mailing list specific to mod_transform
+        only. Release announcements will be cross posted to both lists.
+      </para>
+    </content>
+    <list>
+      <mailinglist name="announce" type="mailman" host="lists.outoforder.cc"/>
+      <mailinglist name="mod_transform" type="mailman" host="lists.outoforder.cc"/>
+    </list>
+ </mailinglists>
+
+  <section position="bottom">
+    <title>Contact &amp; Help</title>
+    <content type="docbook">
+      <para>
+        <ulink url="/email/?Subject=mod_transform">E-Mail us</ulink>, about mod_transform.
+      </para>
+      <para>
+        Send an e-mail to the <link linkend="mailinglist">mod_transform mailing list</link>.
+      </para>
+      <para>
+        Bugs should be reported to the <ulink url="http://bugs.outoforder.cc">OutOfOrder.cc Bug Tracker</ulink>.
+      </para>
+    </content>
+  </section>
+</ooo>

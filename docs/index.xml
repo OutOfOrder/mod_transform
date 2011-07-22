@@ -1,0 +1,233 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="../../../../../xsl/projects.xsl"?>
+<ooo title="mod_transform Documentation" path="/projects/apache/mod_transform/docs/">
+ <section title="Documentation">
+    <content type="xhtml">
+    <div xmlns="http://www.w3.org/1999/xhtml">
+    <div id="compilation">
+    <h3>Compilation</h3>
+    <p>
+      <code>mod_transform</code> uses the "<code>configure/make/make install</code>"
+      mechanism common to many Open Source programs.
+      Most of the dirty work is handled by either configure or 
+      Apache's apxs utility. If you have built Apache modules before, there
+      shouldn't be any surprises for you.
+    </p>
+    <p>
+      The interesting options you can pass to configure are:</p>
+      <ul>
+        <li><code>--with-apxs=/path/to/apache/dir/bin/apxs</code>
+	  <p>
+	    This option is used to specify the location of the
+	    apxs utility that was installed as part of apache.
+	    Specify the location of the binary, not the directory
+	    it is located in.
+	  </p>
+        </li>
+        <li><code>--with-xslt-prefix=PREFIX</code>
+          <p>Prefix where <code>libxslt</code> is installed.</p>
+        </li>
+        <li><code>--with-xslt-exec-prefix=PREFIX</code>
+          <p>Exec prefix where <code>libxslt</code> is installed.</p>
+        </li>
+        <li><code>--with-xml-prefix=PREFIX</code>
+          <p>Prefix where <code>libxml2</code> is installed.</p>
+        </li>
+        <li><code>--with-xml-exec-prefix=PREFIX</code>
+          <p>Exec prefix where <code>libxml2</code> is installed.</p>
+        </li>
+        <li><code>--help</code>
+          <p>Provides a list of available configure options.</p>
+        </li>
+      </ul>
+<pre class="example">./configure --with-apxs=/usr/sbin/apxs2
+make
+make install
+</pre>
+  </div>
+  <div id="integration">
+    <h3>Integration into Apache</h3>
+    <p>To activate <code>mod_transform</code> Just add<br /><br />
+      <code>LoadModule transform_module   modules/mod_transform.so</code><br
+	/><br />
+      to your <code>httpd.conf</code> and restart Apache.
+    </p>
+    <p><code>mod_transform</code> also provides two exported functions for other modules to use the XSLT processor:
+    </p>
+    <pre class="example">void mod_transform_set_XSLT(request_rec* r, const char* name) ;
+void mod_transform_XSLTDoc(request_rec* r, xmlDocPtr doc) ;</pre>
+  </div>
+  <div id="configuration">
+    <h3>Configuring with Apache</h3>
+    <p>Besides registering an output filter with the name <code>XSLT</code>,
+<code>mod_transform</code> has the following additional directives:</p>
+       <ul>
+         <li><a href="#TransformAnnounce">TransformAnnounce</a></li>
+         <li><a href="#TransformCache">TransformCache</a></li>
+         <li><a href="#TransformOptions">TransformOptions</a></li>
+         <li><a href="#TransformSet">TransformSet</a></li>
+       </ul>
+<p>For details on assigning output filters in Apache 2, 
+    please see the <a href="http://httpd.apache.org/docs-2.0/filter.html">Filters Documentation</a>. To get basic XSLT 
+    parsing for your xml files,
+    just add the following to your <code>httpd.conf</code>:
+    </p>
+    <pre class="example">AddOutputFilter XSLT xml</pre>
+  </div>
+
+  <div id="TransformAnnounce" class="apache_directive">
+    <h3>TransformAnnounce</h3>
+    <table class="directive">
+      <tr>
+        <th>Description:</th>
+        <td>Whether to announce this module in the server header.</td>
+      </tr>
+      <tr>
+        <th>Syntax:</th>
+        <td><code>TransformAnnounce <var>[On|Off]</var></code></td>
+      </tr>
+      <tr>
+        <th>Default:</th>
+        <td><code>On</code></td>
+      </tr>
+      <tr>
+        <th>Context:</th>
+        <td>
+          server config,
+          virtual host.
+        </td>
+      </tr>
+    </table>
+      <p>
+      Enables or Disables showing <code>mod_transform</code> in the Apache Server Name string.
+      </p>
+  </div>
+
+
+  <div id="TransformCache" class="apache_directive">
+    <h3>TransformCache</h3>
+    <table class="directive">
+      <tr>
+        <th>Description:</th>
+        <td>Cache an XSLT Stylesheet on Server Startup.</td>
+      </tr>
+      <tr>
+        <th>Syntax:</th>
+        <td><code>TransformCache <var>URL</var> <var>FILE_PATH</var></code></td>
+      </tr>
+      <tr>
+        <th>Default:</th>
+        <td><code>none</code></td>
+      </tr>
+      <tr>
+        <th>Context:</th>
+        <td>
+          server config,
+          virtual host.
+        </td>
+      </tr>
+    </table>
+      <p>This directive forces a specific XSLT Stylesheet to be preloaded by the server on startup.  This can
+         signifigantly increase performance.
+      </p>
+    <pre class="example">TransformCache /project/myfile.xsl /usr/local/share/project/myfile.xsl</pre>
+  </div>
+
+  <div id="TransformOptions" class="apache_directive">
+    <h3>TransformOptions</h3>
+    <table class="directive">
+      <tr>
+        <th>Description:</th>
+        <td>Configure optional features</td>
+      </tr>
+      <tr>
+        <th>Syntax:</th>
+        <td><code>TransformOptoins <var>[+|-]option</var> <var>[[+|-]option]</var> <var>...</var></code></td>
+      </tr>
+      <tr>
+        <th>Default:</th>
+        <td><code>XIncludes</code></td>
+      </tr>
+      <tr>
+        <th>Context:</th>
+        <td>
+          server config,
+          virtual host,
+          directory,
+          .htaccess.
+        </td>
+      </tr>
+    </table>
+      <p>This directive can enable or disable specific <code>mod_transform</code> features on a per-location 
+         basis.
+      </p>
+      <dl>
+        <dt>ApacheFS</dt>
+        <dd>
+        Enables an overlay of the Apache Document Root as the Root Filesystem for all 
+        <code>libXML2</code> Input/Output operations.  For an example with <code>+ApacheFS</code>
+        in effect, consider the following XInclude:
+<pre class="example">&lt;xi:include href="/xi/special.xml" xmlns:xi="http://www.w3.org/2001/XInclude" /&gt;</pre>
+        Normally, this would request the file <code>/xi/special.xml</code> directly from the
+        filesystem.  With <code>+ApacheFS</code> it will do a <code>Subrequest</code>
+        for this file.  This means if your <code>DocumentRoot</code> is <code>/src/vhost1/html</code>,
+        <code>libXML2</code> will read <code>/src/vhost1/html/xi/special.xml</code>.
+        This provides compatibility with <a href="http://axkit.org/">Apache Axkit</a>.
+        </dd>
+
+        <dt>None</dt>
+        <dd>
+        Turns off all previous <code>TransformOptions</code>.
+        </dd>
+
+        <dt>XIncludes</dt>
+        <dd>
+        Enables or disables 
+        <a href="http://www.w3.org/TR/xinclude/">XML Inclusions (XInclude) Version 1.0</a> 
+        support in <code>libXML2</code>.
+        </dd>
+
+      </dl>
+Example Usage:
+<pre class="example">&lt;Directory "/path/to/my/docroot"&gt;
+    TransformOptions +ApacheFS +XIncludes
+&lt;/Directory&gt;</pre>
+  </div>
+
+  <div id="TransformSet" class="apache_directive">
+    <h3>TransformSet</h3>
+    <table class="directive">
+      <tr>
+        <th>Description:</th>
+        <td>Force a specific XSLT File to be used.</td>
+      </tr>
+      <tr>
+        <th>Syntax:</th>
+        <td><code>TransformSet <var>FILE_PATH</var></code></td>
+      </tr>
+      <tr>
+        <th>Default:</th>
+        <td><code>none</code></td>
+      </tr>
+      <tr>
+        <th>Context:</th>
+        <td>
+          server config,
+          virtual host,
+          directory,
+          .htaccess.
+        </td>
+      </tr>
+    </table>
+      <p>This directive forces a specific XSLT Stylesheet for any files it is applied against.
+      </p>
+<pre class="example">&lt;LocationMatch /*/index.xml&gt;
+    TransformSet  /project/myfile.xsl
+&lt;/LocationMatch&gt;</pre>
+  </div>
+
+
+   </div>
+    </content>
+ </section>
+</ooo>

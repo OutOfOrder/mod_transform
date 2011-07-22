@@ -1,0 +1,83 @@
+Index: sapi/apache2handler/php_functions.c
+===================================================================
+RCS file: /repository/php-src/sapi/apache2handler/php_functions.c,v
+retrieving revision 1.13
+diff -u -r1.13 php_functions.c
+--- sapi/apache2handler/php_functions.c 8 Jan 2004 08:18:05 -0000       1.13
++++ sapi/apache2handler/php_functions.c 20 Apr 2004 05:00:59 -0000
+@@ -209,6 +209,65 @@
+ }
+ /* }}} */
+
++/* {{{ proto array apache_get_output_filters()
++   Get All Active Output filters */
++PHP_FUNCTION(apache_get_output_filters)
++{
++       ap_filter_t* ff;
++       php_struct *ctx;
++
++       if (ZEND_NUM_ARGS() != 0) {
++               WRONG_PARAM_COUNT;
++       }
++
++       if(array_init(return_value) != SUCCESS)
++       {
++               RETURN_NULL();
++       }
++
++       ctx = SG(server_context);
++
++       ff = ctx->r->output_filters;
++
++       do {
++               add_next_index_string(return_value, ff->frec->name, 1);
++               ff = ff->next ;
++       } while (ff);
++
++}
++/* }}} */
++
++/* {{{ proto bool apache_add_output_filter(string filter_name)
++   Add an output filter to this request */
++PHP_FUNCTION(apache_add_output_filter)
++{
++       php_struct *ctx;
++       int arg_count = ZEND_NUM_ARGS();
++       zval **filter_name;
++       ap_filter_rec_t* ap_filter;
++
++       if (arg_count != 1 ||
++               zend_get_parameters_ex(arg_count, &filter_name) == FAILURE) {
++               WRONG_PARAM_COUNT;
++       }
++
++       ctx = SG(server_context);
++
++       convert_to_string_ex(filter_name);
++
++        ap_filter = ap_get_output_filter_handle(Z_STRVAL_PP(filter_name));
++
++        /* requested output filter was not found */
++       if(ap_filter == NULL) {
++               RETURN_FALSE;
++       }
++       else {
++               ap_add_output_filter_handle(ap_filter, NULL, ctx->r, ctx->r->connection);
++               RETURN_TRUE;
++       }
++}
++/* }}} */
++
+ /* {{{ proto string apache_note(string note_name [, string note_value])
+    Get and set Apache request notes */
+ PHP_FUNCTION(apache_note)
+@@ -459,6 +518,8 @@
+ static function_entry apache_functions[] = {
+        PHP_FE(apache_lookup_uri, NULL)
+        PHP_FE(virtual, NULL)
++       PHP_FE(apache_get_output_filters, NULL)
++       PHP_FE(apache_add_output_filter, NULL)
+        PHP_FE(apache_request_headers, NULL)
+        PHP_FE(apache_response_headers, NULL)
+        PHP_FE(apache_setenv, NULL)
+
