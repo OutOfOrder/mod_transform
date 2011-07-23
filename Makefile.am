@@ -1,5 +1,5 @@
 AUTOMAKE_OPTIONS = foreign dist-bzip2
-
+ACLOCAL_AMFLAGS = -I m4
 EXTRA_DIST = m4/libxslt.m4 \
 	m4/libxml.m4 \
 	m4/apache.m4 \

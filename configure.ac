@@ -1,18 +1,21 @@
 dnl Required initializer
-AC_INIT(mod_transform, 0.7.0)
-OOO_CONFIG_NICE(config.nice)
-AC_PREREQ(2.53)
+AC_INIT([mod_transform],[0.7.0])
+OOO_CONFIG_NICE([config.nice])
+AC_PREREQ(2.59)
 AC_CONFIG_SRCDIR([src/mod_transform.c])
+AC_CONFIG_MACRO_DIR([m4])
 AM_MAINTAINER_MODE
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE(AC_PACKAGE_NAME, AC_PACKAGE_VERSION)
-AM_CONFIG_HEADER([include/mod_transform_config.h:config.in])
+AC_CONFIG_HEADERS([include/mod_transform_config.h:config.in])
 
 AC_PROG_CC
-AC_PROG_LD
+LT_PATH_LD
 AC_PROG_INSTALL
-AC_PROG_LIBTOOL
+LT_INIT
 
+AC_TYPE_SIZE_T
+AC_CHECK_FUNCS([strcasecmp strchr])
 
 AP_VERSION=2.0.40
 CHECK_APACHE(,$AP_VERSION,
