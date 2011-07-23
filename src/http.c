@@ -43,6 +43,7 @@ const char *HTTP_NS = "http://opensource.surakware.com/wiki/apache";
 const apr_table_t *FGetArgs = NULL;
 const apr_table_t *FPostArgs = NULL;
 ap_filter_t *FFilter = NULL;
+APR_OPTIONAL_FN_TYPE(apreq_handle_apache2) *ap_handle_func;
 
 /* {{{ XPath functions */
 /*! \brief string http:remote-ip(); 
@@ -137,7 +138,10 @@ static void child_init(apr_pool_t *p, server_rec *s) {
 }
 
 static void filter_init(ap_filter_t *f) {
-	apreq_handle_apache2(f->r); /* XXX for future use... most probabely */
+    ap_handle_func = APR_RETRIEVE_OPTIONAL_FN(apreq_handle_apache2);
+    if (ap_handle_func) {
+    	ap_handle_func(f->r); /* XXX for future use... most probabely */
+    }
 }
 
 #ifdef _DEBUG
@@ -153,7 +157,11 @@ static int dump_table(void *data, const char *key, const char *value) {
 static void transform_run_begin(ap_filter_t *f) {
 	apreq_handle_t *apreq;
 
-	apreq = apreq_handle_apache2(f->r);
+    if (ap_handle_func) {
+    	apreq = ap_handle_func(f->r);
+    } else {
+        return;
+    }
 
 	apreq_args(apreq, &FGetArgs);
 
