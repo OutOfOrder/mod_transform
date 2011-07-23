@@ -1,9 +1,9 @@
 #!/bin/sh
 # autogen.sh - generates configure using the autotools
-# $Id: autogen.sh,v 1.1 2004/03/04 08:12:13 firechipmunk Exp $
 export WANT_AUTOCONF=2.5
 
-libtoolize --force --copy
+LIBTOOLIZE=$(which libtoolize || which glibtoolize)
+$LIBTOOLIZE --force --copy
 aclocal -I m4
 autoheader
 automake --add-missing --copy --foreign
