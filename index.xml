@@ -94,7 +94,7 @@
     </category>
     <category>
       <title>Repositories</title>
-      <repository type="svn" name="mod_transform" baseref="http://svn.outoforder.cc/" view="chora"/>
+      <repository type="git" name="httpd/mod_transform" baseref="http://git.outoforder.cc/" view="cgit"/>
     </category>
  </downloads>
 
